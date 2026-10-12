@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Сборка для Docker: рантайм берётся из .next/standalone (нужен только Node)
+  output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
   // Явно фиксируем корень проекта: иначе Turbopack ищет его выше по дереву

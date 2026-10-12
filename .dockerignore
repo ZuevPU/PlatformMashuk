@@ -1,0 +1,17 @@
+.git
+.github
+node_modules
+.next
+out
+build
+docs
+*.md
+.env
+.env.*
+!.env.example
+Dockerfile
+Dockerfile.*
+docker-compose*.yml
+deploy
+public/uploads
+!public/uploads/README.txt

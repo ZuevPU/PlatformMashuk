@@ -1,0 +1,115 @@
+name: Deploy
+
+# Сборка образов и выкладка на сервер при пуше в main.
+# Секреты репозитория (Settings → Secrets and variables → Actions):
+#   SSH_HOST, SSH_USER, SSH_KEY, SSH_PORT (опц.), DEPLOY_PATH
+#   GHCR_TOKEN, GHCR_USER  — если пакет в ghcr.io приватный
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      tools: ${{ steps.meta.outputs.tools }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Имя образа в реестре (нижний регистр)
+        id: meta
+        run: |
+          OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          echo "image=${REGISTRY}/${OWNER}/platformmashuk" >> "$GITHUB_OUTPUT"
+          echo "tools=${REGISTRY}/${OWNER}/platformmashuk-tools" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Образ приложения
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:latest
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Образ инструментов (миграции/сидинг)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.tools
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.tools }}:latest
+            ${{ steps.meta.outputs.tools }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Скопировать конфигурацию на сервер
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: "docker-compose.yml,deploy"
+          target: ${{ secrets.DEPLOY_PATH }}
+          overwrite: true
+
+      - name: Выкатить на сервер
+        uses: appleboy/ssh-action@v1
+        env:
+          APP_IMAGE: ${{ needs.build.outputs.image }}:${{ github.sha }}
+          TOOLS_IMAGE: ${{ needs.build.outputs.tools }}:${{ github.sha }}
+          GHCR_USER: ${{ secrets.GHCR_USER }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: APP_IMAGE,TOOLS_IMAGE,GHCR_USER,GHCR_TOKEN
+          script: |
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            if [ -n "$GHCR_TOKEN" ]; then
+              echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            fi
+
+            printf 'APP_IMAGE=%s\nTOOLS_IMAGE=%s\n' "$APP_IMAGE" "$TOOLS_IMAGE" > .env.deploy
+
+            docker compose --env-file .env --env-file .env.deploy pull
+            docker compose --env-file .env --env-file .env.deploy run --rm tools pnpm db:migrate
+            docker compose --env-file .env --env-file .env.deploy up -d --remove-orphans
+            docker image prune -f

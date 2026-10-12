@@ -1,0 +1,8 @@
+# Единый стиль переводов строк: для скриптов и конфигов — LF (важно для Linux).
+*.sh text eol=lf
+Dockerfile text eol=lf
+Dockerfile.* text eol=lf
+Caddyfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.example text eol=lf
