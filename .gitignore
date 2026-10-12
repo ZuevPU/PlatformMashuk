@@ -1,0 +1,16 @@
+node_modules
+.next
+out
+build
+.DS_Store
+*.pem
+npm-debug.log*
+pnpm-debug.log*
+.env
+.env*.local
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Загруженные пользователями файлы: в репозиторий не попадают
+public/uploads/*
+!public/uploads/README.txt
