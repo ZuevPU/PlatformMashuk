@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { Leaderboard, QuestionResults } from "./QuestionResults";
+import { SpinWheel } from "./SpinWheel";
 import { activeQuestion, responsesFor } from "@/lib/poll-actions";
 import { qrDataUrl } from "@/lib/qr";
 import { QUESTION_KIND_LABELS } from "@/lib/types";
@@ -61,6 +62,7 @@ export function PollPresentation({
   const isLast = session.currentIndex >= poll.questions.length - 1;
   const isQuiz = question?.kind === "quiz";
   const isQa = question?.kind === "qa";
+  const isSpinner = question?.kind === "spinner";
 
   const [origin, setOrigin] = useState("");
   useEffect(() => setOrigin(window.location.origin), []);
@@ -148,7 +150,9 @@ export function PollPresentation({
               {question.hint && <p className="m-0 mb-6 text-lead text-ink-soft">{question.hint}</p>}
 
               <div className="mt-4 flex-1">
-                {session.showResults || isQa ? (
+                {isSpinner ? (
+                  <SpinWheel options={question.options} />
+                ) : session.showResults || isQa ? (
                   <div className="flex flex-col gap-6">
                     <QuestionResults
                       poll={poll}
@@ -191,7 +195,7 @@ export function PollPresentation({
         <span className="rounded-full bg-white/10 px-3 py-1.5 text-meta font-semibold">
           {session.currentIndex + 1} / {poll.questions.length}
         </span>
-        <button type="button" onClick={onNext} className={`${pill} bg-white text-navy`}>
+        <button type="button" onClick={onNext} className={lightPill}>
           {isLast ? "К результатам" : "Далее"}
           <ChevronRight size={16} />
         </button>
@@ -228,3 +232,6 @@ export function PollPresentation({
 
 const pill =
   "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3.5 text-meta font-semibold text-white transition-colors duration-150 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40";
+
+const lightPill =
+  "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-white bg-white px-3.5 text-meta font-semibold text-navy transition-colors duration-150 hover:bg-sky-tint disabled:cursor-not-allowed disabled:opacity-40";

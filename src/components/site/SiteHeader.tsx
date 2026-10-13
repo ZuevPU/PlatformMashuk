@@ -1,19 +1,14 @@
 import Link from "next/link";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { ButtonLink } from "@/components/ui/Button";
-import { getSessionUser, homeFor } from "@/lib/auth";
-import { listManagedPrograms } from "@/lib/admin";
+import { getSessionUser } from "@/lib/auth";
 
 const NAV = [{ href: "/#programs", label: "Программы" }];
 
 export async function SiteHeader() {
-  // «Кабинет» ведёт вошедшего в его программу или в управление, а гостя — на вход
+  // «Кабинет» ведёт вошедшего в личный кабинет, а гостя — на вход
   const user = await getSessionUser();
-  let action = { href: "/join" };
-  if (user) {
-    const manages = user.isCenterAdmin || (await listManagedPrograms(user)).length > 0;
-    action = { href: manages ? "/admin" : await homeFor(user.member.id, false) };
-  }
+  const action = { href: user ? "/cabinet" : "/join" };
 
   return (
     <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-paper-warm/90 backdrop-blur-glass">

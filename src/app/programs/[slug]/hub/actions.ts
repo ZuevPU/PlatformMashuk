@@ -267,7 +267,17 @@ export async function toggleReactionAction(input: {
 
 /* --- Опросы ------------------------------------------------------------- */
 
-const KINDS: QuestionKind[] = ["single", "multiple", "open", "cloud", "qa", "scale", "quiz"];
+const KINDS: QuestionKind[] = [
+  "single",
+  "multiple",
+  "open",
+  "cloud",
+  "qa",
+  "rank",
+  "spinner",
+  "scale",
+  "quiz",
+];
 
 /**
  * Ответ участника на текущий вопрос живой сессии.
@@ -365,6 +375,18 @@ function cleanAnswer(
 ): { optionIds: string[]; text?: string; scale?: number } | null {
   if (!value || typeof value !== "object") return null;
 
+  // Колесо не собирает ответов — его крутит ведущий
+  if (kind === "spinner") return null;
+
+  if (kind === "rank") {
+    const known = new Set(options.map((option) => option.id));
+    const ids = Array.isArray(value.optionIds)
+      ? value.optionIds.filter((id): id is string => typeof id === "string" && known.has(id))
+      : [];
+    const unique = [...new Set(ids)];
+    return unique.length >= 2 ? { optionIds: unique } : null;
+  }
+
   if (kind === "open" || kind === "cloud" || kind === "qa") {
     const text = cleanText(value.text, 300);
     return text ? { optionIds: [], text } : null;
@@ -456,7 +478,10 @@ export async function createPollAction(input: {
           ...(option?.correct ? { correct: true } : {}),
         }))
       : [];
-    if ((kind === "single" || kind === "multiple" || kind === "quiz") && options.length < 2) {
+    if (
+      (kind === "single" || kind === "multiple" || kind === "quiz" || kind === "rank" || kind === "spinner") &&
+      options.length < 2
+    ) {
       return fail("В вопросе с вариантами нужно хотя бы два варианта");
     }
     questions.push({
@@ -519,6 +544,31 @@ export async function createPollAction(input: {
 
   publish({ type: "polls", programSlug: input.programSlug });
   return { ok: true, pollId, sessionId, code, questionIds };
+}
+
+/** Удаление опроса вместе с вопросами, сессиями и ответами (каскадом). */
+export async function deletePollAction(input: {
+  programSlug: string;
+  pollId: string;
+}): Promise<ActionResult> {
+  const db = getDb();
+  const result = await requireContext(input.programSlug, { staff: true });
+  if ("error" in result || !db) return fail((result as { error: string }).error);
+  if (!isId(input.pollId)) return fail("Опрос не найден");
+
+  const deleted = await db
+    .delete(schema.polls)
+    .where(
+      and(
+        eq(schema.polls.id, input.pollId),
+        eq(schema.polls.programId, result.context.programId),
+      ),
+    )
+    .returning({ id: schema.polls.id });
+  if (deleted.length === 0) return fail("Опрос не найден");
+
+  publish({ type: "polls", programSlug: input.programSlug });
+  return { ok: true };
 }
 
 /* --- Авто-закрытие вопроса по времени ----------------------------------- */
@@ -636,6 +686,28 @@ export async function updatePollSessionAction(input: {  programSlug: string;
         : {}),
     })
     .where(eq(schema.pollSessions.id, session.id));
+
+  // В программе идёт только один опрос: запуск нового завершает прежний,
+  // чтобы в зале не смешивались два активных опроса.
+  if (state.status === "live") {
+    await db
+      .update(schema.pollSessions)
+      .set({ status: "finished", accepting: false, finishedAt: new Date() })
+      .where(
+        and(
+          ne(schema.pollSessions.id, session.id),
+          eq(schema.pollSessions.status, "live"),
+          inArray(
+            schema.pollSessions.pollId,
+            db
+              .select({ id: schema.polls.id })
+              .from(schema.polls)
+              .where(eq(schema.polls.programId, result.context.programId)),
+          ),
+        ),
+      );
+    publish({ type: "polls", programSlug: input.programSlug });
+  }
 
   publish({ type: "poll-session", programSlug: input.programSlug, sessionId: session.id, ...state });
 

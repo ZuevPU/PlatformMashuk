@@ -7,6 +7,7 @@ import {
   cloudWords,
   leaderboard,
   openAnswers,
+  rankStats,
   responsesFor,
   scaleStats,
   tallyOptions,
@@ -57,6 +58,39 @@ export function QuestionResults({
             Ответы появятся здесь сразу, как только участники начнут отвечать.
           </p>
         </div>
+      </div>
+    );
+  }
+
+  if (question.kind === "spinner") return null;
+
+  if (question.kind === "rank") {
+    const rows = rankStats(question, responses);
+    return (
+      <div className="rounded-panel border border-[var(--line)] bg-white p-6">
+        <ol className="m-0 flex list-none flex-col gap-2.5 p-0">
+          {rows.map((row, index) => (
+            <li key={row.optionId} className="flex items-center gap-3">
+              <span
+                className="grid size-7 shrink-0 place-items-center rounded-full text-caption font-semibold"
+                style={{
+                  background: "color-mix(in oklab, var(--color-navy) 8%, transparent)",
+                  color: "var(--color-navy)",
+                }}
+              >
+                {index + 1}
+              </span>
+              <span className="min-w-0 flex-1 text-ui text-ink">{row.text}</span>
+              <span className="font-display text-body font-semibold text-navy">
+                {row.count ? row.avg.toFixed(1).replace(".", ",") : "—"}
+              </span>
+              <span className="w-14 text-right text-micro text-ink-faint">ср. место</span>
+            </li>
+          ))}
+        </ol>
+        <p className="m-0 mt-4 text-caption text-ink-faint">
+          Средняя позиция по ответам зала: чем меньше, тем выше вариант в зачёте.
+        </p>
       </div>
     );
   }

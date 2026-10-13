@@ -38,9 +38,12 @@ export function ParticipantScreen({
   const [selected, setSelected] = useState<string[]>([]);
   const [text, setText] = useState("");
   const [scale, setScale] = useState<number | null>(null);
+  const [order, setOrder] = useState<string[]>([]);
   const [sentCount, setSentCount] = useState(0);
 
   const isQa = question.kind === "qa";
+  const isRank = question.kind === "rank";
+  const isSpinner = question.kind === "spinner";
   const isText = question.kind === "open" || question.kind === "cloud" || isQa;
   const full = variant === "full";
 
@@ -48,12 +51,14 @@ export function ParticipantScreen({
     setSelected([]);
     setText("");
     setScale(null);
+    setOrder([]);
     setSentCount(0);
   }, [question.id]);
 
-  const answered = !isQa && hasAnswered(session, question.id, currentUser.id);
+  const answered = !isQa && !isSpinner && hasAnswered(session, question.id, currentUser.id);
 
   const value: AnswerValue | null = (() => {
+    if (isRank) return order.length === question.options.length ? { optionIds: order } : null;
     if (isText) return text.trim() ? { optionIds: [], text: text.trim() } : null;
     if (question.kind === "scale") return scale ? { optionIds: [], scale } : null;
     return selected.length > 0 ? { optionIds: selected } : null;
@@ -69,6 +74,14 @@ export function ParticipantScreen({
       return;
     }
     setSelected([optionId]);
+  };
+
+  const toggleRank = (optionId: string) => {
+    setOrder((previous) =>
+      previous.includes(optionId)
+        ? previous.filter((id) => id !== optionId)
+        : [...previous, optionId],
+    );
   };
 
   const submit = () => {
@@ -90,6 +103,11 @@ export function ParticipantScreen({
               ? "Ведущий запустит вопросы — экран обновится автоматически."
               : "Спасибо за участие. Результаты уже собраны ведущим."
           }
+        />
+      ) : isSpinner ? (
+        <State
+          title="Колесо на экране ведущего"
+          text="Смотрите на большой экран — ведущий крутит колесо."
         />
       ) : answered ? (
         <State
@@ -149,6 +167,41 @@ export function ParticipantScreen({
                   <span>{question.scaleLabels.max}</span>
                 </div>
               )}
+            </div>
+          ) : isRank ? (
+            <div className="flex flex-col gap-2">
+              <p className="m-0 mb-1 text-micro text-ink-faint">
+                Нажимайте варианты по порядку: 1 — важнее всего
+              </p>
+              {question.options.map((option) => {
+                const rank = order.indexOf(option.id);
+                const active = rank >= 0;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => toggleRank(option.id)}
+                    className={[
+                      "flex cursor-pointer items-center gap-3 rounded-field border px-4 text-left leading-snug transition-all duration-200 ease-brand",
+                      full ? "py-4 text-lead" : "py-3 text-ui",
+                      active
+                        ? "border-transparent text-on-accent"
+                        : "border-[var(--line)] bg-white text-ink hover:-translate-y-0.5",
+                    ].join(" ")}
+                    style={active ? { background: "var(--color-navy)" } : undefined}
+                  >
+                    <span
+                      className={[
+                        "grid size-7 shrink-0 place-items-center rounded-full text-caption font-semibold",
+                        active ? "bg-white/25 text-white" : "bg-sky-tint text-sky-ink",
+                      ].join(" ")}
+                    >
+                      {active ? rank + 1 : ""}
+                    </span>
+                    {option.text}
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <div className="flex flex-col gap-2">

@@ -37,7 +37,8 @@ export function startSession(session: PollSession, now: string): PollSession {
     status: "live",
     currentIndex: 0,
     accepting: true,
-    showResults: false,
+    // Результаты показываем сразу — ведущий скрывает их при необходимости
+    showResults: true,
     startedAt: session.startedAt ?? now,
   };
 }
@@ -51,13 +52,13 @@ export function nextQuestion(session: PollSession, poll: Poll): PollSession {
     ...session,
     currentIndex: session.currentIndex + 1,
     accepting: true,
-    showResults: false,
+    showResults: true,
   };
 }
 
 export function previousQuestion(session: PollSession): PollSession {
   if (session.currentIndex === 0) return session;
-  return { ...session, currentIndex: session.currentIndex - 1, showResults: false };
+  return { ...session, currentIndex: session.currentIndex - 1, showResults: true };
 }
 
 export function setAccepting(session: PollSession, accepting: boolean): PollSession {
@@ -360,6 +361,39 @@ export function scaleStats(responses: PollResponse[]): ScaleStats {
     total,
     average: total === 0 ? 0 : Math.round((sum / total) * 10) / 10,
   };
+}
+
+export interface RankRow {
+  optionId: string;
+  text: string;
+  /** Средняя позиция (1 — лучшее место) */
+  avg: number;
+  count: number;
+}
+
+/** Средний ранг каждого варианта: чем меньше — тем выше в зачёте. */
+export function rankStats(question: Question, responses: PollResponse[]): RankRow[] {
+  const positions = new Map<string, { sum: number; count: number }>();
+  for (const response of responses) {
+    response.value.optionIds.forEach((optionId, index) => {
+      const current = positions.get(optionId) ?? { sum: 0, count: 0 };
+      current.sum += index + 1;
+      current.count += 1;
+      positions.set(optionId, current);
+    });
+  }
+
+  return question.options
+    .map((option) => {
+      const stat = positions.get(option.id);
+      return {
+        optionId: option.id,
+        text: option.text,
+        avg: stat ? Math.round((stat.sum / stat.count) * 10) / 10 : 0,
+        count: stat?.count ?? 0,
+      };
+    })
+    .sort((a, b) => (a.avg || 99) - (b.avg || 99));
 }
 
 export interface OpenAnswer {

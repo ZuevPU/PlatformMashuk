@@ -40,7 +40,8 @@ export function PostCard({
   onAddComment,
   onAddReply,
 }: PostCardProps) {
-  const [commentsOpen, setCommentsOpen] = useState(post.comments.length > 0);
+  // Комментарии скрыты по умолчанию — открываются кнопкой под постом
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const author = members.find((member) => member.id === post.authorId);
   const total = countComments(post.comments);
 

@@ -10,11 +10,11 @@ import {
   CalendarDays,
   ExternalLink,
   LayoutTemplate,
-  LogOut,
   MapPin,
   MessagesSquare,
   Megaphone,
   Settings,
+  UserRound,
   Users,
 } from "lucide-react";
 import { Channel } from "./Channel";
@@ -31,7 +31,6 @@ import {
   togglePinAction,
   toggleReactionAction,
 } from "@/app/programs/[slug]/hub/actions";
-import { logoutAction } from "@/lib/auth-actions";
 import {
   addComment,
   addReply,
@@ -56,7 +55,6 @@ import type {
   ProgramStatus,
   SeasonKey,
 } from "@/lib/types";
-import { MEMBER_ROLE_LABELS } from "@/lib/types";
 
 export interface HubProgram {
   slug: string;
@@ -363,43 +361,28 @@ export function HubApp({
             </h1>
           </div>
 
-          {/* На телефоне — одна строка, на широком экране — карточка */}
+          {/* Управление и личный кабинет */}
           <div
-            className="flex w-full items-center gap-3 rounded-soft border border-[var(--line)] bg-white px-3.5 py-2.5 lg:block lg:w-auto lg:p-3.5"
+            className="flex w-full flex-wrap items-center gap-2 lg:w-auto"
             data-session-user={session.memberId}
             data-session-role={session.role}
           >
-            <p className="m-0 mb-2.5 hidden text-micro font-semibold tracking-[0.12em] text-gold-ink uppercase lg:block">
-              Вы вошли как
-            </p>
-            <p className="m-0 min-w-0 flex-1 truncate font-display text-ui font-semibold tracking-[-0.02em] text-navy lg:mb-1 lg:text-lead">
-              {session.name}
-            </p>
-            <p className="m-0 mb-3 hidden text-caption text-ink-faint lg:block">
-              {MEMBER_ROLE_LABELS[session.role]} программы
-            </p>
-            <div className="flex shrink-0 gap-2">
-              {staff && (
-                <Link
-                  href={`/admin/programs/${program.slug}`}
-                  className="inline-flex min-h-9 items-center gap-2 rounded-full bg-navy px-3.5 text-caption font-semibold text-white no-underline transition-all duration-200 ease-brand hover:-translate-y-0.5 hover:bg-navy-deep"
-                >
-                  <Settings size={13} />
-                  <span className="hidden sm:inline">Управление</span>
-                  <span className="sr-only sm:hidden">Управление</span>
-                </Link>
-              )}
-              <form action={logoutAction}>
-                <button
-                  type="submit"
-                  className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3.5 text-caption font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
-                >
-                  <LogOut size={13} />
-                  <span className="hidden sm:inline">Выйти</span>
-                  <span className="sr-only sm:hidden">Выйти</span>
-                </button>
-              </form>
-            </div>
+            {staff && (
+              <Link
+                href={`/admin/programs/${program.slug}`}
+                className="inline-flex min-h-10 items-center gap-2 rounded-full bg-navy px-4 text-caption font-semibold text-white no-underline transition-all duration-200 ease-brand hover:-translate-y-0.5 hover:bg-navy-deep"
+              >
+                <Settings size={14} />
+                Управление
+              </Link>
+            )}
+            <Link
+              href="/cabinet"
+              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 text-caption font-semibold text-navy no-underline transition-all duration-200 ease-brand hover:-translate-y-0.5"
+            >
+              <UserRound size={14} />
+              Личный кабинет
+            </Link>
           </div>
         </div>
 

@@ -17,6 +17,7 @@ import {
   Timer,
 } from "lucide-react";
 import { AcceptingBadge, Leaderboard, QuestionResults } from "./QuestionResults";
+import { SpinWheel } from "./SpinWheel";
 import type { Member, Poll, PollSession } from "@/lib/types";
 import { QUESTION_KIND_LABELS } from "@/lib/types";
 import { activeQuestion, responsesFor } from "@/lib/poll-actions";
@@ -65,6 +66,7 @@ export function PresenterScreen({
   const isLast = session.currentIndex >= poll.questions.length - 1;
   const isQuizQuestion = question?.kind === "quiz";
   const isQaQuestion = question?.kind === "qa";
+  const isSpinnerQuestion = question?.kind === "spinner";
 
   const [origin, setOrigin] = useState("");
   const [copied, setCopied] = useState(false);
@@ -142,7 +144,7 @@ export function PresenterScreen({
 
       {/* ---------------------------------------------------------- Управление */}
       <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--line)] px-7 py-4">
-        <button type="button" onClick={onPresent} className={`${toolButton} bg-navy text-white`}>
+        <button type="button" onClick={onPresent} className={accentButton}>
           <MonitorPlay size={14} />
           Режим презентации
         </button>
@@ -201,7 +203,9 @@ export function PresenterScreen({
             {question.hint && <p className="m-0 mb-5 text-ui text-ink-soft">{question.hint}</p>}
 
             <div className="mt-6">
-              {session.showResults || isQaQuestion ? (
+              {isSpinnerQuestion ? (
+                <SpinWheel options={question.options} />
+              ) : session.showResults || isQaQuestion ? (
                 <div className="flex flex-col gap-4">
                   <QuestionResults
                     poll={poll}
@@ -246,7 +250,7 @@ export function PresenterScreen({
           <ChevronLeft size={14} />
           Назад
         </button>
-        <button type="button" onClick={onNext} className={`${toolButton} bg-navy text-white`}>
+        <button type="button" onClick={onNext} className={accentButton}>
           {isLast ? "К результатам" : "Следующий вопрос"}
           <ChevronRight size={14} />
         </button>
@@ -274,3 +278,6 @@ export function PresenterScreen({
 
 const toolButton =
   "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3.5 text-caption font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40";
+
+const accentButton =
+  "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-navy bg-navy px-3.5 text-caption font-semibold text-white transition-all duration-200 ease-brand hover:-translate-y-0.5 hover:bg-navy-deep";

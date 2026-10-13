@@ -8,6 +8,7 @@ import {
   Image as ImageIcon,
   Play,
   Plus,
+  Trash2,
   Users,
 } from "lucide-react";
 import { ParticipantScreen } from "./ParticipantScreen";
@@ -28,7 +29,7 @@ import {
   startSession,
 } from "@/lib/poll-actions";
 import { localIsoNow } from "@/lib/dates";
-import { submitPollResponseAction, createPollAction, updatePollSessionAction, moderateQaResponseAction } from "@/app/programs/[slug]/hub/actions";
+import { submitPollResponseAction, createPollAction, updatePollSessionAction, moderateQaResponseAction, deletePollAction } from "@/app/programs/[slug]/hub/actions";
 import type { AnswerValue, Member, Poll, PollData, PollResponse, PollSession } from "@/lib/types";
 import { QUESTION_KIND_LABELS } from "@/lib/types";
 
@@ -80,6 +81,9 @@ export function PollsView({
     [activeSession?.pollId, polls],
   );
   const question = activePoll && activeSession ? activeQuestion(activeSession, activePoll) : undefined;
+
+  /** Единственный активный опрос программы (если он есть). */
+  const liveSession = sessions.find((item) => item.status === "live");
 
   /* --- Таймер вопроса ---------------------------------------------------- */
   useEffect(() => {
@@ -185,6 +189,16 @@ export function PollsView({
     if (!existing) return;
     setActiveSessionId(existing.id);
     setView("session");
+  };
+
+  /** Удаление опроса вместе с сессией и ответами. */
+  const deletePoll = (poll: Poll) => {
+    if (!window.confirm(`Удалить опрос «${poll.title}»? Сессия и ответы тоже удалятся.`)) return;
+    setPolls((previous) => previous.filter((item) => item.id !== poll.id));
+    setSessions((previous) => previous.filter((item) => item.pollId !== poll.id));
+    void deletePollAction({ programSlug, pollId: poll.id }).then((result) => {
+      if (!result.ok) setPollError(result.error);
+    });
   };
 
   /** Модерация Q&A: скрыть вопрос или отметить отвеченным (команда программы). */
@@ -472,7 +486,26 @@ export function PollsView({
     );
   }
 
-  /* --- Список опросов ---------------------------------------------------- */
+  /* --- Участник: только активный опрос, иначе — плашка ------------------- */
+  if (!canManage) {
+    return (
+      <section className="card grid min-h-45 place-items-center p-8 text-center">
+        <div>
+          <span className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-sky-tint text-navy">
+            <BarChart3 size={20} />
+          </span>
+          <p className="m-0 mb-1.5 font-display text-lead font-semibold text-navy">
+            Нет активного опроса
+          </p>
+          <p className="m-0 text-meta leading-relaxed text-ink-faint">
+            Когда ведущий запустит опрос, экран обновится сам.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  /* --- Список опросов (команда программы) -------------------------------- */
   return (
     <div className="flex flex-col gap-4">
       <section className="card p-7">
@@ -510,6 +543,18 @@ export function PollsView({
           </span>
           <span className="rounded-full bg-[var(--color-sky-tint)] px-3.5 py-1.5 text-caption font-semibold text-sky-ink">
             участников в программе: {participantCount}
+          </span>
+          <span
+            className="rounded-full px-3.5 py-1.5 text-caption font-semibold"
+            style={
+              liveSession
+                ? { background: "color-mix(in oklab, var(--accent) 16%, white)", color: "var(--accent-ink)" }
+                : { background: "color-mix(in oklab, var(--color-navy) 6%, transparent)", color: "var(--color-ink-soft)" }
+            }
+          >
+            {liveSession
+              ? `Идёт: ${polls.find((item) => item.id === liveSession.pollId)?.title ?? "опрос"}`
+              : "Нет активного опроса"}
           </span>
         </div>
       </section>
@@ -616,6 +661,14 @@ export function PollsView({
                     >
                       <ImageIcon size={14} />
                       Картинка
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deletePoll(poll)}
+                      className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border border-autumn/40 bg-white px-4 text-meta font-semibold text-autumn-ink transition-all duration-200 ease-brand hover:-translate-y-0.5"
+                    >
+                      <Trash2 size={14} />
+                      Удалить
                     </button>
                   </>
                 )}

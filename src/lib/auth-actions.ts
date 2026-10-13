@@ -3,12 +3,14 @@
 import { randomUUID } from "node:crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "./db/client";
 import { publish } from "./events";
 import {
   authenticate,
   createSession,
+  destroyMemberSessions,
   destroySession,
   getSessionUser,
   homeFor,
@@ -39,6 +41,8 @@ import {
 
 export interface FormState {
   error?: string;
+  /** Сообщение об успехе — форма показывает подтверждение */
+  ok?: string;
   /** Введённое (кроме паролей) — форма восстанавливает его после ошибки */
   values?: Record<string, string>;
 }
@@ -213,6 +217,106 @@ async function joinProgram(programId: number, memberId: string, slug: string): P
 /* --- Выход --------------------------------------------------------------- */
 
 export async function logoutAction(): Promise<void> {
+  await destroySession();
+  redirect("/");
+}
+
+/* --- Личный кабинет ------------------------------------------------------ */
+
+const PROFILE_FIELDS = ["name", "contact", "position", "org", "city"];
+
+/** Профиль: имя, логин, должность, организация, город. */
+export async function updateProfileAction(_: FormState, form: FormData): Promise<FormState> {
+  const db = getDb();
+  const user = await getSessionUser();
+  if (!db || !user) return { error: "Нужно войти" };
+
+  const name = field(form, "name", 120);
+  const contact = normalizeContact(field(form, "contact"));
+  if (name.length < 2) return failWith(form, "Укажите имя и фамилию", PROFILE_FIELDS);
+  if (!contact) return failWith(form, "Укажите почту или телефон — это ваш логин", PROFILE_FIELDS);
+
+  const [row] = await db
+    .select({ contact: schema.members.contact })
+    .from(schema.members)
+    .where(eq(schema.members.id, user.member.id));
+  if (!row) return { error: "Аккаунт не найден" };
+
+  if (contact !== row.contact) {
+    const [taken] = await db
+      .select({ id: schema.members.id })
+      .from(schema.members)
+      .where(eq(schema.members.contact, contact));
+    if (taken) return failWith(form, "Этот логин уже занят", PROFILE_FIELDS);
+  }
+
+  await db
+    .update(schema.members)
+    .set({
+      name,
+      contact,
+      position: field(form, "position", 160) || null,
+      org: field(form, "org", 200) || null,
+      city: field(form, "city", 80) || null,
+    })
+    .where(eq(schema.members.id, user.member.id));
+
+  revalidatePath("/cabinet");
+  return { ok: "Профиль сохранён" };
+}
+
+/** Смена пароля: старый проверяем, остальные сессии закрываем. */
+export async function changePasswordAction(_: FormState, form: FormData): Promise<FormState> {
+  const db = getDb();
+  const user = await getSessionUser();
+  if (!db || !user) return { error: "Нужно войти" };
+
+  const current = field(form, "current", 200);
+  const next = field(form, "password", 200);
+  const [row] = await db
+    .select({ passwordHash: schema.members.passwordHash })
+    .from(schema.members)
+    .where(eq(schema.members.id, user.member.id));
+  if (!row) return { error: "Аккаунт не найден" };
+
+  if (!(await verifyPassword(current, row.passwordHash))) {
+    return { error: "Текущий пароль неверный" };
+  }
+  const weak = passwordProblem(next);
+  if (weak) return { error: weak };
+  if (next !== field(form, "passwordRepeat", 200)) return { error: "Пароли не совпадают" };
+
+  await db
+    .update(schema.members)
+    .set({ passwordHash: await hashPassword(next) })
+    .where(eq(schema.members.id, user.member.id));
+
+  // Пароль сменился — старые входы закрываем, текущий браузер оставляем
+  await destroyMemberSessions(user.member.id);
+  await createSession(user.member.id, await userAgent());
+  return { ok: "Пароль обновлён" };
+}
+
+/**
+ * Удаление аккаунта. Сначала убираем записи, которые ссылаются на человека
+ * (посты, комментарии, сообщения, созданные беседы), затем саму запись —
+ * остальное удалится каскадом.
+ */
+export async function deleteAccountAction(): Promise<void> {
+  const db = getDb();
+  const user = await getSessionUser();
+  if (!db || !user) redirect("/");
+  if (user.isCenterAdmin) redirect("/cabinet?error=admin");
+
+  const id = user.member.id;
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.messages).where(eq(schema.messages.authorId, id));
+    await tx.delete(schema.comments).where(eq(schema.comments.authorId, id));
+    await tx.delete(schema.posts).where(eq(schema.posts.authorId, id));
+    await tx.delete(schema.conversations).where(eq(schema.conversations.createdBy, id));
+    await tx.delete(schema.members).where(eq(schema.members.id, id));
+  });
+
   await destroySession();
   redirect("/");
 }

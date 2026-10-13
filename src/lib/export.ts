@@ -4,6 +4,7 @@ import {
   cloudWords,
   leaderboard,
   openAnswers,
+  rankStats,
   responsesFor,
   scaleStats,
   tallyOptions,
@@ -105,6 +106,24 @@ export function buildPollCsv(input: {
         );
       });
       rows.push(csvRow([index + 1, question.title, "Шкала", "Средний балл", stats.average, ""]));
+      continue;
+    }
+
+    if (question.kind === "spinner") continue;
+
+    if (question.kind === "rank") {
+      for (const row of rankStats(question, responses)) {
+        rows.push(
+          csvRow([
+            index + 1,
+            question.title,
+            "Ранжирование",
+            row.text,
+            row.count ? row.avg : "—",
+            `ответов: ${row.count}`,
+          ]),
+        );
+      }
       continue;
     }
 

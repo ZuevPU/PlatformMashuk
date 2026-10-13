@@ -201,7 +201,16 @@ export const REACTION_SET = ["👍", "❤️", "🔥", "👏", "🎯", "🤔"] a
    ========================================================================== */
 
 /** Тип вопроса: то, что выбирает автор опроса в конструкторе. */
-export type QuestionKind = "single" | "multiple" | "open" | "cloud" | "qa" | "scale" | "quiz";
+export type QuestionKind =
+  | "single"
+  | "multiple"
+  | "open"
+  | "cloud"
+  | "qa"
+  | "rank"
+  | "spinner"
+  | "scale"
+  | "quiz";
 
 /** Как показывать открытые ответы: списком или облаком слов. */
 export type OpenVisual = "cloud" | "list";
@@ -302,6 +311,8 @@ export const QUESTION_KIND_LABELS: Record<QuestionKind, string> = {
   open: "Список ответов",
   cloud: "Облако слов",
   qa: "Вопросы и ответы",
+  rank: "Ранжирование",
+  spinner: "Колесо",
   scale: "Шкала 1–5",
   quiz: "Вопрос квиза",
 };
@@ -312,6 +323,8 @@ export const QUESTION_KIND_HINTS: Record<QuestionKind, string> = {
   open: "Свободный текст: показывается списком",
   cloud: "Свободный текст: показывается облаком слов",
   qa: "Зал задаёт вопросы — они появляются списком на экране",
+  rank: "Участник расставляет варианты по порядку — считается средний ранг",
+  spinner: "Колесо на экране: ведущий крутит, выпадает случайный вариант",
   scale: "Оценка по пятибалльной шкале со средним значением",
   quiz: "Один верный вариант, очки и лидерборд на экране",
 };
