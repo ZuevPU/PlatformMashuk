@@ -28,7 +28,7 @@ import {
   startSession,
 } from "@/lib/poll-actions";
 import { localIsoNow } from "@/lib/dates";
-import { submitPollResponseAction, createPollAction, updatePollSessionAction } from "@/app/programs/[slug]/hub/actions";
+import { submitPollResponseAction, createPollAction, updatePollSessionAction, moderateQaResponseAction } from "@/app/programs/[slug]/hub/actions";
 import type { AnswerValue, Member, Poll, PollData, PollResponse, PollSession } from "@/lib/types";
 import { QUESTION_KIND_LABELS } from "@/lib/types";
 
@@ -187,6 +187,30 @@ export function PollsView({
     setView("session");
   };
 
+  /** Модерация Q&A: скрыть вопрос или отметить отвеченным (команда программы). */
+  const moderateQaResponse = (
+    responseId: string,
+    patch: { hidden?: boolean; answered?: boolean },
+  ) => {
+    if (!activeSession) return;
+    const sessionId = activeSession.id;
+    setSessions((previous) =>
+      previous.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              responses: session.responses.map((response) =>
+                response.id === responseId ? { ...response, ...patch } : response,
+              ),
+            }
+          : session,
+      ),
+    );
+    void moderateQaResponseAction({ programSlug, sessionId, responseId, patch }).then((result) => {
+      if (!result.ok) setPollError(result.error);
+    });
+  };
+
   const submitAnswer = (value: AnswerValue) => {
     if (!activePoll || !activeSession || !question) return;
     const response = createResponse({
@@ -262,6 +286,7 @@ export function PollsView({
             title: poll.title,
             description: poll.description,
             anonymous: poll.anonymous,
+            teamCount: poll.teamCount,
             source: poll.source,
             templateKey: poll.templateKey,
             questions: poll.questions.map((question) => ({
@@ -338,6 +363,7 @@ export function PollsView({
             onPrevious={() => updateSession((session) => previousQuestion(session))}
             onFinish={() => updateSession((session) => finishSession(session, localIsoNow()))}
             onExit={() => setPresenting(false)}
+            onModerate={moderateQaResponse}
           />
         )}
         <div className="flex flex-wrap items-center gap-3">
@@ -387,6 +413,7 @@ export function PollsView({
               onExportCsv={exportCsv}
               onExportPng={exportPng}
               onPresent={() => setPresenting(true)}
+              onModerate={moderateQaResponse}
             />
           ) : (
             <div className="flex flex-col gap-4">

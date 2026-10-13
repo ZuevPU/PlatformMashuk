@@ -374,6 +374,8 @@ export async function loadPollData(
           optionIds: schema.pollResponses.optionIds,
           text: schema.pollResponses.text,
           scale: schema.pollResponses.scale,
+          hidden: schema.pollResponses.hidden,
+          answered: schema.pollResponses.answered,
           createdAt: schema.pollResponses.createdAt,
         })
         .from(schema.pollResponses)
@@ -391,6 +393,7 @@ export async function loadPollData(
       title: row.title,
       description: row.description ?? undefined,
       anonymous: row.anonymous,
+      teamCount: row.teamCount,
       createdAt: toMoscowIso(row.createdAt),
       source: row.source,
       templateKey: row.templateKey ?? undefined,
@@ -425,11 +428,15 @@ export async function loadPollData(
       finishedAt: row.finishedAt ? toMoscowIso(row.finishedAt) : undefined,
       responses: responseRows
         .filter((response) => response.sessionId === row.id)
+        // Скрытые модератором вопросы Q&A участникам не отдаём
+        .filter((response) => viewer.staff || !response.hidden)
         .map<PollResponse>((response) => ({
           id: response.id,
           questionId: response.questionId,
           memberId: response.memberId ?? undefined,
           mine: response.respondentKey === mineKey || response.memberId === viewer.id,
+          hidden: response.hidden,
+          answered: response.answered,
           value: {
             optionIds: response.optionIds,
             text: response.text ?? undefined,

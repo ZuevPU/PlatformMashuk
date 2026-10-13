@@ -79,6 +79,7 @@ export function PollBuilder({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [anonymous, setAnonymous] = useState(false);
+  const [teamCount, setTeamCount] = useState(0);
   const [questions, setQuestions] = useState<Question[]>([]);
 
   const applyTemplate = (template: PollTemplate) => {
@@ -88,6 +89,7 @@ export function PollBuilder({
     setQuestions(template.questions.map((question) => ({ ...question, options: [...question.options] })));
     setSource("template");
     setTemplateKey(template.key);
+    setTeamCount(0);
     setStep("editor");
   };
 
@@ -98,6 +100,7 @@ export function PollBuilder({
     setQuestions([blankQuestion("single")]);
     setSource("custom");
     setTemplateKey(undefined);
+    setTeamCount(0);
     setStep("editor");
   };
 
@@ -131,6 +134,7 @@ export function PollBuilder({
       description: description.trim() || undefined,
       questions,
       anonymous,
+      teamCount,
       createdAt,
       source,
       templateKey,
@@ -262,6 +266,35 @@ export function PollBuilder({
               Ведущий видит только сводку, без имён. Для квиза недоступно: лидерборд требует имён.
             </span>
           </span>
+        </label>
+
+        <label className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--line)] p-4">
+          <input
+            type="checkbox"
+            checked={teamCount > 0}
+            onChange={(event) => setTeamCount(event.target.checked ? 4 : 0)}
+            className="size-4 accent-navy"
+          />
+          <span className="text-ui font-medium text-ink">Командный квиз</span>
+          <span className="text-caption text-ink-faint">
+            Очки участников складываются в общий зачёт команды
+          </span>
+          {teamCount > 0 && (
+            <label className="ml-auto flex items-center gap-2 text-meta text-ink-soft">
+              Команд:
+              <select
+                value={teamCount}
+                onChange={(event) => setTeamCount(Number(event.target.value))}
+                className="min-h-8 cursor-pointer rounded-full border border-[var(--line)] bg-white px-3 text-caption font-semibold text-navy outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
+              >
+                {[2, 3, 4, 5, 6].map((count) => (
+                  <option key={count} value={count}>
+                    {count}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </label>
       </div>
 

@@ -43,6 +43,13 @@
       "when": 1791881127057,
       "tag": "0005_general_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791889764577,
+      "tag": "0006_nebulous_lucky_pierre",
+      "breakpoints": true
     }
   ]
 }

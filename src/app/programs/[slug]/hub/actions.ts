@@ -413,6 +413,8 @@ export async function createPollAction(input: {
   title: string;
   description?: string;
   anonymous: boolean;
+  /** Командный квиз: 0 — личный зачёт, иначе число команд (2–6) */
+  teamCount?: number;
   source: "template" | "custom";
   templateKey?: string;
   questions: {
@@ -494,6 +496,7 @@ export async function createPollAction(input: {
       title,
       description: cleanText(input.description, 600) ?? null,
       anonymous: Boolean(input.anonymous),
+      teamCount: Math.max(0, Math.min(6, Math.round(Number(input.teamCount) || 0))),
       source: input.source === "template" ? "template" : "custom",
       templateKey: cleanText(input.templateKey, 80) ?? null,
       createdAt: new Date(),
@@ -660,6 +663,54 @@ export async function updatePollSessionAction(input: {  programSlug: string;
     }
   }
 
+  return { ok: true };
+}
+
+/**
+ * Модерация вопросов зала (Q&A): скрыть или отметить отвеченным.
+ * Доступно только команде программы.
+ */
+export async function moderateQaResponseAction(input: {
+  programSlug: string;
+  sessionId: string;
+  responseId: string;
+  patch: { hidden?: boolean; answered?: boolean };
+}): Promise<ActionResult> {
+  const db = getDb();
+  const result = await requireContext(input.programSlug, { staff: true });
+  if ("error" in result || !db) return fail((result as { error: string }).error);
+  if (!isId(input.sessionId) || !isId(input.responseId)) return fail("Вопрос не найден");
+
+  const [row] = await db
+    .select({ id: schema.pollResponses.id })
+    .from(schema.pollResponses)
+    .innerJoin(schema.pollSessions, eq(schema.pollSessions.id, schema.pollResponses.sessionId))
+    .innerJoin(schema.polls, eq(schema.polls.id, schema.pollSessions.pollId))
+    .where(
+      and(
+        eq(schema.pollResponses.id, input.responseId),
+        eq(schema.pollResponses.sessionId, input.sessionId),
+        eq(schema.polls.programId, result.context.programId),
+      ),
+    );
+  if (!row) return fail("Вопрос не найден");
+
+  const patch: { hidden?: boolean; answered?: boolean } = {};
+  if (typeof input.patch.hidden === "boolean") patch.hidden = input.patch.hidden;
+  if (typeof input.patch.answered === "boolean") patch.answered = input.patch.answered;
+  if (Object.keys(patch).length === 0) return { ok: true };
+
+  await db
+    .update(schema.pollResponses)
+    .set(patch)
+    .where(eq(schema.pollResponses.id, input.responseId));
+
+  publish({
+    type: "poll-responses",
+    programSlug: input.programSlug,
+    sessionId: input.sessionId,
+    questionId: "",
+  });
   return { ok: true };
 }
 

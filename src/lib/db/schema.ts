@@ -222,6 +222,8 @@ export const polls = pgTable("polls", {
   anonymous: boolean("anonymous").notNull().default(false),
   source: text("source").$type<"template" | "custom">().notNull().default("custom"),
   templateKey: text("template_key"),
+  /** Командный квиз: 0 — личный зачёт, иначе число команд */
+  teamCount: integer("team_count").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });
 
@@ -282,6 +284,10 @@ export const pollResponses = pgTable(
     optionIds: jsonb("option_ids").$type<string[]>().notNull().default([]),
     text: text("text"),
     scale: integer("scale"),
+    /** Q&A: вопрос скрыт модератором */
+    hidden: boolean("hidden").notNull().default(false),
+    /** Q&A: вопрос отмечен как отвеченный */
+    answered: boolean("answered").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => [

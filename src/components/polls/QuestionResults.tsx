@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Clock3 } from "lucide-react";
+import { CheckCircle2, Clock3, Eye, EyeOff, MessageSquareCheck, MessageSquareText } from "lucide-react";
 import type { Member, Poll, PollResponse, PollSession, Question } from "@/lib/types";
 import { QUESTION_KIND_LABELS } from "@/lib/types";
 import {
@@ -10,6 +10,7 @@ import {
   responsesFor,
   scaleStats,
   tallyOptions,
+  teamLeaderboard,
 } from "@/lib/poll-actions";
 import { formatTime } from "@/lib/dates";
 
@@ -28,10 +29,21 @@ interface ResultsProps {
   session: PollSession;
   members: Member[];
   anonymous: boolean;
+  /** Команда программы: показывает управление модерацией Q&A */
+  staff?: boolean;
+  onModerate?: (responseId: string, patch: { hidden?: boolean; answered?: boolean }) => void;
 }
 
 /** Визуализация результатов текущего вопроса. */
-export function QuestionResults({ poll, question, session, members, anonymous }: ResultsProps) {
+export function QuestionResults({
+  poll,
+  question,
+  session,
+  members,
+  anonymous,
+  staff = false,
+  onModerate,
+}: ResultsProps) {
   const responses = responsesFor(session, question.id);
 
   if (responses.length === 0) {
@@ -63,7 +75,15 @@ export function QuestionResults({ poll, question, session, members, anonymous }:
 
   if (question.kind === "qa") {
     // Живой список вопросов зала — как «Ask me anything» в AhaSlides
-    return <OpenList responses={responses} members={members} anonymous={anonymous} question />;
+    return (
+      <QaList
+        responses={responses}
+        members={members}
+        anonymous={anonymous}
+        staff={staff}
+        onModerate={onModerate}
+      />
+    );
   }
 
   if (question.kind === "scale") {
@@ -209,6 +229,110 @@ function OpenList({
   );
 }
 
+/** Список вопросов зала (Q&A) с модерацией: скрыть и отметить отвеченным. */
+function QaList({
+  responses,
+  members,
+  anonymous,
+  staff,
+  onModerate,
+}: {
+  responses: PollResponse[];
+  members: Member[];
+  anonymous: boolean;
+  staff: boolean;
+  onModerate?: (responseId: string, patch: { hidden?: boolean; answered?: boolean }) => void;
+}) {
+  const items = responses
+    .map((response) => ({
+      id: response.id,
+      text: (response.value.text ?? "").trim(),
+      authorName: response.memberId
+        ? members.find((member) => member.id === response.memberId)?.name
+        : undefined,
+      createdAt: response.createdAt,
+      hidden: Boolean(response.hidden),
+      answered: Boolean(response.answered),
+    }))
+    .filter((item) => item.text.length > 0)
+    .sort((a, b) => Number(a.hidden) - Number(b.hidden) || b.createdAt.localeCompare(a.createdAt));
+
+  if (items.length === 0) {
+    return (
+      <div className="grid min-h-40 place-items-center rounded-panel border border-dashed border-[var(--line)] bg-white/60 px-6 py-8 text-center">
+        <p className="m-0 text-meta text-ink-faint">
+          Пока вопросов нет — зал задаёт их с телефона по QR или ссылке.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {items.map((item) => (
+        <article
+          key={item.id}
+          className={[
+            "rounded-soft border px-5 py-4",
+            item.hidden
+              ? "border-dashed border-[var(--line)] bg-white/50 opacity-70"
+              : item.answered
+                ? "border-[var(--line)]"
+                : "border-[var(--line)] bg-white",
+          ].join(" ")}
+          style={item.answered && !item.hidden ? { background: "color-mix(in oklab, var(--color-teal) 8%, white)" } : undefined}
+        >
+          <p className="m-0 mb-2.5 text-ui leading-relaxed text-ink">{item.text}</p>
+          <div className="flex flex-wrap items-center gap-2 text-micro text-ink-faint">
+            <span>
+              {anonymous || !item.authorName ? "анонимно" : item.authorName} ·{" "}
+              {formatTime(item.createdAt)}
+            </span>
+            {item.answered && (
+              <span
+                className="rounded-full px-2 py-0.5 font-semibold"
+                style={{ background: "color-mix(in oklab, var(--color-teal) 14%, white)", color: "var(--color-teal)" }}
+              >
+                отвечен
+              </span>
+            )}
+            {item.hidden && (
+              <span className="rounded-full bg-grey-brand/50 px-2 py-0.5 font-semibold text-ink-soft">
+                скрыт
+              </span>
+            )}
+            {staff && onModerate && (
+              <span className="ml-auto flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onModerate(item.id, { answered: !item.answered })}
+                  className={qaButton}
+                  title="Отметить отвеченным"
+                >
+                  {item.answered ? <MessageSquareCheck size={13} /> : <MessageSquareText size={13} />}
+                  {item.answered ? "Снять" : "Отвечен"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onModerate(item.id, { hidden: !item.hidden })}
+                  className={qaButton}
+                  title="Скрыть из зала"
+                >
+                  {item.hidden ? <Eye size={13} /> : <EyeOff size={13} />}
+                  {item.hidden ? "Показать" : "Скрыть"}
+                </button>
+              </span>
+            )}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+const qaButton =
+  "inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-white px-2.5 py-1 text-micro font-semibold text-navy transition-colors duration-150 hover:bg-sky-tint";
+
 /** Таблица лидеров квиза: считается по всем вопросам квиза в сессии. */
 export function Leaderboard({
   poll,
@@ -221,6 +345,10 @@ export function Leaderboard({
   members: Member[];
   compact?: boolean;
 }) {
+  if (poll.teamCount > 1) {
+    return <TeamLeaderboard poll={poll} session={session} members={members} />;
+  }
+
   const rows = leaderboard(poll, session, members);
 
   if (rows.length === 0) {
@@ -288,9 +416,70 @@ export function Leaderboard({
   );
 }
 
-/** Компактная плашка о состоянии приёма ответов. */
-export function AcceptingBadge({ accepting }: { accepting: boolean }) {
+/** Командный зачёт: сумма очков участников по командам. */
+function TeamLeaderboard({
+  poll,
+  session,
+  members,
+}: {
+  poll: Poll;
+  session: PollSession;
+  members: Member[];
+}) {
+  const rows = teamLeaderboard(poll, session, members);
+
   return (
+    <div className="overflow-hidden rounded-panel border border-[var(--line)] bg-white">
+      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--line)] px-5 py-3.5">
+        <span className="font-display text-body font-semibold tracking-[-0.02em] text-navy">
+          Командный зачёт
+        </span>
+        <span className="text-caption text-ink-faint">
+          {rows.length} команд · очки за верные ответы
+        </span>
+      </div>
+      <ol className="m-0 list-none p-0">
+        {rows.map((row, index) => (
+          <li
+            key={row.team}
+            className="flex items-center gap-4 border-b border-[var(--line)] px-5 py-3 last:border-b-0"
+            style={
+              index === 0
+                ? { background: "color-mix(in oklab, var(--accent) 12%, white)" }
+                : undefined
+            }
+          >
+            <span
+              className={[
+                "grid size-8 shrink-0 place-items-center rounded-full text-meta font-semibold",
+                index === 0 ? "text-on-accent" : "text-navy",
+              ].join(" ")}
+              style={
+                index === 0
+                  ? { background: "var(--accent)" }
+                  : { background: "color-mix(in oklab, var(--color-navy) 8%, transparent)" }
+              }
+            >
+              {index + 1}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-ui font-medium text-ink">{row.name}</span>
+              <span className="block text-micro text-ink-faint">
+                участников: {row.players} · верных ответов: {row.correct}
+              </span>
+            </span>
+            <span className="font-display text-subtitle font-semibold tracking-[-0.02em] text-navy">
+              {row.points}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+/** Компактная плашка о состоянии приёма ответов. */
+export function AcceptingBadge({ accepting }: { accepting: boolean }) {  return (
     <span
       className={[
         "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-caption font-semibold",

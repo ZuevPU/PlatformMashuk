@@ -32,6 +32,7 @@ interface PollPresentationProps {
   onPrevious: () => void;
   onFinish: () => void;
   onExit: () => void;
+  onModerate?: (responseId: string, patch: { hidden?: boolean; answered?: boolean }) => void;
 }
 
 /**
@@ -53,11 +54,13 @@ export function PollPresentation({
   onPrevious,
   onFinish,
   onExit,
+  onModerate,
 }: PollPresentationProps) {
   const question = activeQuestion(session, poll);
   const answers = question ? responsesFor(session, question.id).length : 0;
   const isLast = session.currentIndex >= poll.questions.length - 1;
   const isQuiz = question?.kind === "quiz";
+  const isQa = question?.kind === "qa";
 
   const [origin, setOrigin] = useState("");
   useEffect(() => setOrigin(window.location.origin), []);
@@ -145,7 +148,7 @@ export function PollPresentation({
               {question.hint && <p className="m-0 mb-6 text-lead text-ink-soft">{question.hint}</p>}
 
               <div className="mt-4 flex-1">
-                {session.showResults ? (
+                {session.showResults || isQa ? (
                   <div className="flex flex-col gap-6">
                     <QuestionResults
                       poll={poll}
@@ -153,6 +156,8 @@ export function PollPresentation({
                       session={session}
                       members={members}
                       anonymous={poll.anonymous}
+                      staff
+                      onModerate={onModerate}
                     />
                     {isQuiz && <Leaderboard poll={poll} session={session} members={members} />}
                   </div>

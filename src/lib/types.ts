@@ -234,6 +234,8 @@ export interface Poll {
   description?: string;
   questions: Question[];
   anonymous: boolean;
+  /** Командный квиз: 0 — личный зачёт, иначе число команд */
+  teamCount: number;
   createdAt: string;
   source: "template" | "custom";
   templateKey?: string;
@@ -250,10 +252,14 @@ export interface PollResponse {
   questionId: string;
   /** Пусто, если опрос анонимный */
   memberId?: string;
-  /** Ответ текущего пользователя — известно и в анонимном опросе */
+  /** Ответ текущего пользователя */
   mine?: boolean;
   value: AnswerValue;
   createdAt: string;
+  /** Q&A: скрыт модератором */
+  hidden?: boolean;
+  /** Q&A: отмечен как отвеченный */
+  answered?: boolean;
 }
 
 export type SessionStatus = "draft" | "live" | "finished";

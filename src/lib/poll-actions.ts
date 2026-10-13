@@ -442,6 +442,51 @@ export function leaderboard(
   );
 }
 
+export interface TeamRow {
+  team: number;
+  name: string;
+  points: number;
+  correct: number;
+  players: number;
+}
+
+/** Стабильно раскладывает участника по командам — по id, без хранения. */
+export function teamIndex(memberId: string, teams: number): number {
+  let hash = 0;
+  for (let index = 0; index < memberId.length; index += 1) {
+    hash = (hash * 31 + memberId.charCodeAt(index)) >>> 0;
+  }
+  return hash % teams;
+}
+
+/** Командный зачёт: очки участников складываются в общий счёт команды. */
+export function teamLeaderboard(
+  poll: Poll,
+  session: PollSession,
+  members: Member[],
+): TeamRow[] {
+  const teams = Math.max(2, Math.min(6, poll.teamCount || 0));
+  const rows = new Map<number, TeamRow>();
+  for (let team = 0; team < teams; team += 1) {
+    rows.set(team, { team, name: `Команда ${team + 1}`, points: 0, correct: 0, players: 0 });
+  }
+
+  for (const member of members) {
+    if (member.role !== "participant") continue;
+    const team = teamIndex(member.id, teams);
+    rows.get(team)!.players += 1;
+  }
+
+  for (const row of leaderboard(poll, session, members)) {
+    const team = rows.get(teamIndex(row.memberId, teams));
+    if (!team) continue;
+    team.points += row.points;
+    team.correct += row.correct;
+  }
+
+  return [...rows.values()].sort((a, b) => b.points - a.points || a.team - b.team);
+}
+
 /* ==========================================================================
    Демонстрационные ответы для seed
    ========================================================================== */

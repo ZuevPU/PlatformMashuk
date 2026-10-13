@@ -23,8 +23,8 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-function poll(input: Omit<Poll, "programSlug"> & { programSlug?: string }): Poll {
-  return { programSlug: "", ...input };
+function poll(input: Omit<Poll, "programSlug" | "teamCount"> & { programSlug?: string; teamCount?: number }): Poll {
+  return { programSlug: "", teamCount: 0, ...input };
 }
 
 function session(input: Omit<PollSession, "programSlug"> & { programSlug?: string }): PollSession {

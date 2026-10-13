@@ -36,6 +36,7 @@ interface PresenterScreenProps {
   onExportCsv: () => void;
   onExportPng: () => void;
   onPresent: () => void;
+  onModerate?: (responseId: string, patch: { hidden?: boolean; answered?: boolean }) => void;
 }
 
 /**
@@ -57,11 +58,13 @@ export function PresenterScreen({
   onExportCsv,
   onExportPng,
   onPresent,
+  onModerate,
 }: PresenterScreenProps) {
   const question = activeQuestion(session, poll);
   const answers = question ? responsesFor(session, question.id).length : 0;
   const isLast = session.currentIndex >= poll.questions.length - 1;
   const isQuizQuestion = question?.kind === "quiz";
+  const isQaQuestion = question?.kind === "qa";
 
   const [origin, setOrigin] = useState("");
   const [copied, setCopied] = useState(false);
@@ -198,7 +201,7 @@ export function PresenterScreen({
             {question.hint && <p className="m-0 mb-5 text-ui text-ink-soft">{question.hint}</p>}
 
             <div className="mt-6">
-              {session.showResults ? (
+              {session.showResults || isQaQuestion ? (
                 <div className="flex flex-col gap-4">
                   <QuestionResults
                     poll={poll}
@@ -206,6 +209,8 @@ export function PresenterScreen({
                     session={session}
                     members={members}
                     anonymous={poll.anonymous}
+                    staff
+                    onModerate={onModerate}
                   />
                   {isQuizQuestion && <Leaderboard poll={poll} session={session} members={members} />}
                 </div>
