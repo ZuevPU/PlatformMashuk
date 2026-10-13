@@ -102,6 +102,8 @@ services:
 
   node-exporter:
     image: prom/node-exporter:latest
+    # Мониторинг включается отдельно: docker compose --profile metrics up -d
+    profiles: ["metrics"]
     restart: unless-stopped
     command:
       - "--path.procfs=/host/proc"
@@ -116,6 +118,7 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
+    profiles: ["metrics"]
     restart: unless-stopped
     depends_on:
       - node-exporter
@@ -130,6 +133,7 @@ services:
 
   grafana:
     image: grafana/grafana-oss:latest
+    profiles: ["metrics"]
     restart: unless-stopped
     depends_on:
       - prometheus
