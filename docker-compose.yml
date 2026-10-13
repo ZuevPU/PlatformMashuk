@@ -28,7 +28,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
       POSTGRES_DB: ${POSTGRES_DB:-mashuk_platform}
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      # Postgres 18+ хранит данные в /var/lib/postgresql (не .../data)
+      - pg_data:/var/lib/postgresql
       - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mashuk} -d ${POSTGRES_DB:-mashuk_platform}"]
