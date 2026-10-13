@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { ParticipantScreen } from "./ParticipantScreen";
 import { PollBuilder } from "./PollBuilder";
+import { PollPresentation } from "./PollPresentation";
 import { PresenterScreen } from "./PresenterScreen";
 import { Leaderboard, QuestionResults } from "./QuestionResults";
 import {
@@ -68,6 +69,7 @@ export function PollsView({
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
+  const [presenting, setPresenting] = useState(false);
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId),
@@ -315,6 +317,29 @@ export function PollsView({
 
     return (
       <div className="flex flex-col gap-4">
+        {presenting && (
+          <PollPresentation
+            poll={activePoll}
+            session={activeSession}
+            members={members}
+            participantCount={participantCount}
+            secondsLeft={secondsLeft}
+            onToggleAccepting={() =>
+              updateSession((session) => {
+                const starting = !session.accepting;
+                const next = starting ? startSession(session, localIsoNow()) : session;
+                return setAccepting(next, starting);
+              })
+            }
+            onToggleResults={() =>
+              updateSession((session) => setShowResults(session, !session.showResults))
+            }
+            onNext={() => updateSession((session) => nextQuestion(session, activePoll))}
+            onPrevious={() => updateSession((session) => previousQuestion(session))}
+            onFinish={() => updateSession((session) => finishSession(session, localIsoNow()))}
+            onExit={() => setPresenting(false)}
+          />
+        )}
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
@@ -361,6 +386,7 @@ export function PollsView({
               onFinish={() => updateSession((session) => finishSession(session, localIsoNow()))}
               onExportCsv={exportCsv}
               onExportPng={exportPng}
+              onPresent={() => setPresenting(true)}
             />
           ) : (
             <div className="flex flex-col gap-4">

@@ -48,8 +48,10 @@ export default async function AdminProgramLayout({
         </div>
       </header>
 
-      <AdminTabs slug={slug} />
-      {children}
+      <div className="grid gap-6 lg:grid-cols-[248px_minmax(0,1fr)] lg:items-start">
+        <AdminTabs slug={slug} />
+        <div className="min-w-0">{children}</div>
+      </div>
     </div>
   );
 }

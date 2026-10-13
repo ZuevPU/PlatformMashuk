@@ -9,7 +9,6 @@ import {
   BarChart3,
   CalendarDays,
   ExternalLink,
-  FileText,
   LayoutTemplate,
   LogOut,
   MapPin,
@@ -278,13 +277,70 @@ export function HubApp({
   const livePoll = parts.polls.sessions.some((item) => item.status === "live");
   const hasBuildSection = program.hasBuild || Boolean(program.landing);
 
+  // Разделы рабочего пространства — как вкладки мессенджера: канал, чат участников,
+  // расписание, опросы, участники, а в самом конце — материалы программы.
+  const navItems: {
+    key: HubSection;
+    label: string;
+    short: string;
+    Icon: typeof Megaphone;
+    badge?: string;
+    highlight?: boolean;
+  }[] = [
+    {
+      key: "channel",
+      label: "Канал программы",
+      short: "Канал",
+      Icon: Megaphone,
+      badge: String(posts.length),
+    },
+    {
+      key: "chats",
+      label: "Чат участников",
+      short: "Чат",
+      Icon: MessagesSquare,
+      badge: unread ? String(unread) : String(conversations.length),
+      highlight: unread > 0,
+    },
+    {
+      key: "schedule",
+      label: "Расписание",
+      short: "Расписание",
+      Icon: CalendarDays,
+      badge: program.days.length ? `${program.days.length} дн.` : undefined,
+    },
+    {
+      key: "polls",
+      label: "Опросы",
+      short: "Опросы",
+      Icon: BarChart3,
+      badge: livePoll ? "идёт" : String(parts.polls.polls.length),
+      highlight: livePoll,
+    },
+    {
+      key: "members",
+      label: "Участники",
+      short: "Участники",
+      Icon: Users,
+      badge: String(members.length),
+    },
+  ];
+  if (hasBuildSection) {
+    navItems.push({
+      key: "build",
+      label: "Материалы программы",
+      short: "Материалы",
+      Icon: LayoutTemplate,
+    });
+  }
+
   return (
     <div
       data-season={program.season}
       style={seasonStyle(program.season) as CSSProperties}
       className="bg-paper-warm py-8 md:py-10"
     >
-      <div className="wrap">
+      <div className="wrap pb-24 lg:pb-0">
         {/* ------------------------------------------------------ Верхняя строка */}
         <div className="mb-4 flex flex-wrap items-start justify-between gap-4 lg:mb-7 lg:gap-5">
           <div className="min-w-0">
@@ -364,67 +420,23 @@ export function HubApp({
         )}
 
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start lg:gap-6">
-          <aside className="sticky top-19 z-10 flex min-w-0 flex-col gap-4 lg:top-24">
+          <aside className="sticky top-24 z-10 hidden min-w-0 flex-col gap-4 lg:flex">
             <nav
               ref={navRef}
-              className="card flex-row gap-1 overflow-x-auto p-1.5 [scrollbar-width:none] lg:flex-col lg:overflow-visible lg:p-3"
+              className="card flex-col gap-1 p-3"
               aria-label="Разделы программы"
             >
-              <NavItem
-                active={section === "channel"}
-                onClick={() => openSection("channel")}
-                icon={<Megaphone size={16} />}
-                label="Канал программы"
-                badge={String(posts.length)}
-              />
-              <NavItem
-                active={section === "schedule"}
-                onClick={() => openSection("schedule")}
-                icon={<CalendarDays size={16} />}
-                label="Расписание"
-                badge={program.days.length ? `${program.days.length} дн.` : undefined}
-              />
-              {hasBuildSection && (
+              {navItems.map((item) => (
                 <NavItem
-                  active={section === "build"}
-                  onClick={() => openSection("build")}
-                  icon={<LayoutTemplate size={16} />}
-                  label="Сборка программы"
+                  key={item.key}
+                  active={section === item.key}
+                  onClick={() => openSection(item.key)}
+                  icon={<item.Icon size={18} />}
+                  label={item.label}
+                  badge={item.badge}
+                  highlight={item.highlight}
                 />
-              )}
-              <NavItem
-                active={section === "chats"}
-                onClick={() => openSection("chats")}
-                icon={<MessagesSquare size={16} />}
-                label="Чаты"
-                badge={unread ? String(unread) : String(conversations.length)}
-                highlight={unread > 0}
-              />
-              <NavItem
-                active={section === "polls"}
-                onClick={() => openSection("polls")}
-                icon={<BarChart3 size={16} />}
-                label="Опросы и квизы"
-                badge={livePoll ? "идёт" : String(parts.polls.polls.length)}
-                highlight={livePoll}
-              />
-              <NavItem
-                active={section === "members"}
-                onClick={() => openSection("members")}
-                icon={<Users size={16} />}
-                label="Участники"
-                badge={String(members.length)}
-              />
-              {program.materialsCount > 0 && (
-                <Link
-                  href={`/programs/${program.slug}#materials`}
-                  className="flex shrink-0 items-center gap-2.5 rounded-field px-3.5 py-2.5 text-meta font-medium whitespace-nowrap text-ink-soft no-underline transition-colors duration-200 hover:bg-sky-tint hover:text-navy"
-                >
-                  <FileText size={16} />
-                  Материалы программы
-                  <span className="ml-auto text-micro text-ink-faint">{program.materialsCount}</span>
-                </Link>
-              )}
+              ))}
             </nav>
 
             <div className="card hidden gap-3.5 p-5 text-meta lg:flex">
@@ -508,6 +520,42 @@ export function HubApp({
           </div>
         </div>
       </div>
+
+      {/* Мобильное меню — вкладками внизу экрана, как в мессенджерах */}
+      <nav
+        data-hub-bottom-nav
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--line)] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+        aria-label="Разделы программы"
+      >
+        <ul className="m-0 flex list-none items-stretch p-0">
+          {navItems.map((item) => {
+            const active = section === item.key;
+            return (
+              <li key={item.key} className="flex-1">
+                <button
+                  type="button"
+                  onClick={() => openSection(item.key)}
+                  aria-current={active ? "page" : undefined}
+                  className="relative flex w-full cursor-pointer flex-col items-center gap-1 px-1 pt-2.5 pb-2 text-micro font-medium transition-colors"
+                  style={active ? { color: "var(--accent-ink)" } : undefined}
+                >
+                  <span className="relative">
+                    <item.Icon size={22} />
+                    {item.highlight && (
+                      <span
+                        className="absolute -top-1 -right-2 size-2.5 rounded-full ring-2 ring-white"
+                        style={{ background: "var(--accent)" }}
+                        aria-hidden="true"
+                      />
+                    )}
+                  </span>
+                  <span className={active ? "font-semibold" : "text-ink-faint"}>{item.short}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Lock,
   LockOpen,
+  MonitorPlay,
   Timer,
 } from "lucide-react";
 import { AcceptingBadge, Leaderboard, QuestionResults } from "./QuestionResults";
@@ -34,6 +35,7 @@ interface PresenterScreenProps {
   onFinish: () => void;
   onExportCsv: () => void;
   onExportPng: () => void;
+  onPresent: () => void;
 }
 
 /**
@@ -54,6 +56,7 @@ export function PresenterScreen({
   onFinish,
   onExportCsv,
   onExportPng,
+  onPresent,
 }: PresenterScreenProps) {
   const question = activeQuestion(session, poll);
   const answers = question ? responsesFor(session, question.id).length : 0;
@@ -81,9 +84,9 @@ export function PresenterScreen({
   return (
     <section className="overflow-hidden rounded-card border border-[var(--line)] bg-white shadow-[var(--shadow-brand)]">
       {/* ------------------------------------------------------- Шапка экрана */}
-      <div className="mesh mesh--accent px-7 py-6">
-        <div className="flex flex-wrap items-start justify-between gap-6">
-          <div className="min-w-0 flex-1">
+      <div className="mesh mesh--accent px-6 py-6 md:px-7">
+        <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+          <div className="min-w-0">
             <p className="eyebrow eyebrow--light mb-1.5">Экран ведущего</p>
             <h2 className="m-0 mb-2 font-display text-[clamp(22px,2.6vw,30px)] leading-tight font-semibold tracking-[-0.035em] text-white">
               {poll.title}
@@ -96,7 +99,7 @@ export function PresenterScreen({
           </div>
 
           {/* Как присоединиться: QR + код + ссылка */}
-          <div className="flex items-center gap-4 rounded-2xl bg-white/12 p-3 backdrop-blur">
+          <div className="flex w-full items-center gap-4 rounded-2xl bg-white/12 p-3 backdrop-blur md:w-auto">
             {qr && (
               // eslint-disable-next-line @next/next/no-img-element -- QR генерируется в браузере
               <img
@@ -107,7 +110,7 @@ export function PresenterScreen({
                 className="rounded-xl bg-white p-1.5"
               />
             )}
-            <div className="min-w-38">
+            <div className="min-w-0">
               <p className="m-0 mb-1 text-micro font-semibold tracking-[0.14em] text-sky-light uppercase">
                 Код для участников
               </p>
@@ -136,6 +139,10 @@ export function PresenterScreen({
 
       {/* ---------------------------------------------------------- Управление */}
       <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--line)] px-7 py-4">
+        <button type="button" onClick={onPresent} className={`${toolButton} bg-navy text-white`}>
+          <MonitorPlay size={14} />
+          Режим презентации
+        </button>
         <AcceptingBadge accepting={session.accepting} />
 
         {secondsLeft !== null && (
