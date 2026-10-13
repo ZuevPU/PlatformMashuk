@@ -25,7 +25,8 @@ function normalize(raw: string): string | null {
 }
 
 async function main() {
-  const [rawContact, ...nameParts] = process.argv.slice(2);
+  // npm и pnpm по-разному передают разделитель «--» — пропускаем его
+  const [rawContact, ...nameParts] = process.argv.slice(2).filter((arg) => arg !== "--");
   const contact = normalize(rawContact ?? "");
   const name = nameParts.join(" ").trim() || "Администратор Центра";
   if (!contact) {
