@@ -1,7 +1,7 @@
 "use server";
 
 import { randomInt, randomUUID } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db/client";
 import { getViewer } from "@/lib/auth";
 import { publish } from "@/lib/events";
@@ -382,6 +382,24 @@ function cleanAnswer(
 }
 
 /**
+ * Четырёхзначный код сессии, свободный среди незавершённых опросов.
+ * По коду участник входит в опрос (/poll/<код>) и строится QR — поэтому
+ * код должен указывать однозначно.
+ */
+async function uniqueCode(db: NonNullable<ReturnType<typeof getDb>>): Promise<string> {
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    const candidate = String(randomInt(1000, 10000));
+    const [clash] = await db
+      .select({ id: schema.pollSessions.id })
+      .from(schema.pollSessions)
+      .where(and(eq(schema.pollSessions.code, candidate), ne(schema.pollSessions.status, "finished")))
+      .limit(1);
+    if (!clash) return candidate;
+  }
+  return String(randomInt(1000, 10000));
+}
+
+/**
  * Сохранение нового опроса вместе с черновиком сессии.
  *
  * Идентификаторы вопросов строит сервер: они получают префикс опроса,
@@ -456,7 +474,7 @@ export async function createPollAction(input: {
 
   const pollId = `poll-${randomUUID()}`;
   const sessionId = `session-${randomUUID()}`;
-  const code = String(randomInt(1000, 10000));
+  const code = await uniqueCode(db);
   const questionIds = questions.map((_, index) => `${pollId}--q${index + 1}`);
 
   await db.transaction(async (tx) => {

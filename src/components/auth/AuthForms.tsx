@@ -88,18 +88,23 @@ export function LoginForm({ next }: { next?: string }) {
 export function EnterProgramForm({
   slug,
   signedInAs,
+  next,
 }: {
   slug: string;
   /** Человек уже вошёл на платформу — нужен только пароль программы */
   signedInAs?: string;
+  /** Куда вернуться после входа (например, ссылка на живой опрос) */
+  next?: string;
 }) {
   const [mode, setMode] = useState<"new" | "member">("new");
   const [state, action, pending] = useActionState(enterProgramAction, {});
+  const backTo = next && next.startsWith("/") && !next.startsWith("//") ? next : `/programs/${slug}/hub`;
 
   if (signedInAs) {
     return (
       <form action={action} className="flex flex-col gap-4">
         <input type="hidden" name="slug" value={slug} />
+        <input type="hidden" name="next" value={backTo} />
         <p className="m-0 text-ui leading-relaxed text-ink-soft">
           Вы вошли как <b className="text-ink">{signedInAs}</b>. Введите пароль программы,
           чтобы присоединиться к её рабочему пространству.
@@ -128,10 +133,11 @@ export function EnterProgramForm({
       </div>
 
       {mode === "member" ? (
-        <LoginForm next={`/programs/${slug}/hub`} />
+        <LoginForm next={backTo} />
       ) : (
         <form action={action} className="flex flex-col gap-4">
           <input type="hidden" name="slug" value={slug} />
+          <input type="hidden" name="next" value={next && next.startsWith("/") && !next.startsWith("//") ? next : ""} />
           <Field
             label="Пароль программы"
             name="programPassword"

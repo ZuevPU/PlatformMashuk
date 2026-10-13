@@ -137,13 +137,15 @@ export async function enterProgramAction(_: FormState, form: FormData): Promise<
   }
 
   const hub = `/programs/${slug}/hub`;
+  // Куда вернуться: обычно в хаб, но по ссылке на опрос — сразу к опросу
+  const next = safeNext(field(form, "next", 300)) ?? hub;
   const current = await getSessionUser();
 
   // Уже вошёл на платформу — просто добавляем в программу
   if (current) {
     await joinProgram(program.id, current.member.id, slug);
     await resetAttempts([keys[1]]);
-    redirect(hub);
+    redirect(next);
   }
 
   const name = field(form, "name", 120);
@@ -194,7 +196,7 @@ export async function enterProgramAction(_: FormState, form: FormData): Promise<
   await joinProgram(program.id, memberId, slug);
   await resetAttempts([keys[1]]);
   await createSession(memberId, await userAgent());
-  redirect(hub);
+  redirect(next);
 }
 
 async function joinProgram(programId: number, memberId: string, slug: string): Promise<void> {

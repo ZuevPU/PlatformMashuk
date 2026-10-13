@@ -12,6 +12,7 @@ import { seasonStyle } from "@/lib/brand";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ next?: string }>;
 }
 
 export const dynamic = "force-dynamic";
@@ -25,13 +26,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function EnterProgramPage({ params }: PageProps) {
+export default async function EnterProgramPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
+  const { next } = await searchParams;
   const program = await getProgram(slug);
   if (!program) notFound();
 
-  // Уже участник — сразу в рабочее пространство
-  if (hasDatabase() && (await getViewer(slug))) redirect(`/programs/${slug}/hub`);
+  // Уже участник — сразу в рабочее пространство (или к опросу, откуда пришли)
+  if (hasDatabase() && (await getViewer(slug))) {
+    redirect(next && next.startsWith("/") && !next.startsWith("//") ? next : `/programs/${slug}/hub`);
+  }
 
   const session = await getSessionUser();
 
@@ -74,7 +78,7 @@ export default async function EnterProgramPage({ params }: PageProps) {
               расписание и сборка программы.
             </p>
             {hasDatabase() ? (
-              <EnterProgramForm slug={slug} signedInAs={session?.member.name} />
+              <EnterProgramForm slug={slug} signedInAs={session?.member.name} next={next} />
             ) : (
               <p className="m-0 rounded-field bg-sky-tint px-4 py-3 text-meta text-sky-ink">
                 Вход появится после подключения базы данных.

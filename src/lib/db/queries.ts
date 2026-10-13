@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb, schema } from "./client";
 import { toMoscowIso, programSeason, programStatus } from "../dates";
 import { POLL_TEMPLATES } from "../poll-templates";
@@ -17,6 +17,7 @@ import type {
   Post,
   ProgramView,
   ReactionSummary,
+  SessionStatus,
 } from "../types";
 
 /**
@@ -440,6 +441,50 @@ export async function loadPollData(
   });
 
   return { polls, sessions, templates: POLL_TEMPLATES };
+}
+
+/* --- Вход в опрос по коду или ссылке ----------------------------------- */
+
+export interface PollJoinTarget {
+  sessionId: string;
+  programSlug: string;
+  status: SessionStatus;
+}
+
+/**
+ * Сессия опроса по коду (четыре цифры) или по её id.
+ *
+ * Так участник попадает в опрос по ссылке /poll/<код> или отсканировав QR.
+ * Если под код подходит несколько сессий, берётся идущая сейчас, затем
+ * черновик — завершённые в конце.
+ */
+export async function findPollSession(codeOrId: string): Promise<PollJoinTarget | null> {
+  const db = getDb();
+  if (!db || !/^[\w-]{1,80}$/.test(codeOrId)) return null;
+
+  const rows = await db
+    .select({
+      sessionId: schema.pollSessions.id,
+      status: schema.pollSessions.status,
+      startedAt: schema.pollSessions.startedAt,
+      programSlug: schema.programs.slug,
+    })
+    .from(schema.pollSessions)
+    .innerJoin(schema.polls, eq(schema.polls.id, schema.pollSessions.pollId))
+    .innerJoin(schema.programs, eq(schema.programs.id, schema.polls.programId))
+    .where(or(eq(schema.pollSessions.id, codeOrId), eq(schema.pollSessions.code, codeOrId)));
+
+  if (rows.length === 0) return null;
+
+  const rank = (status: SessionStatus) => (status === "live" ? 3 : status === "draft" ? 2 : 1);
+  rows.sort(
+    (a, b) =>
+      rank(b.status) - rank(a.status) ||
+      (b.startedAt?.getTime() ?? 0) - (a.startedAt?.getTime() ?? 0),
+  );
+
+  const best = rows[0];
+  return { sessionId: best.sessionId, programSlug: best.programSlug, status: best.status };
 }
 
 /* --- Чаты --------------------------------------------------------------- */

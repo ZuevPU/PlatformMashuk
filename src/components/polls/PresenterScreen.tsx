@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Eye,
   EyeOff,
   FileSpreadsheet,
@@ -16,6 +19,7 @@ import { AcceptingBadge, Leaderboard, QuestionResults } from "./QuestionResults"
 import type { Member, Poll, PollSession } from "@/lib/types";
 import { QUESTION_KIND_LABELS } from "@/lib/types";
 import { activeQuestion, responsesFor } from "@/lib/poll-actions";
+import { qrDataUrl } from "@/lib/qr";
 
 interface PresenterScreenProps {
   poll: Poll;
@@ -34,7 +38,8 @@ interface PresenterScreenProps {
 
 /**
  * Экран ведущего: то, что видно на проекторе в зале.
- * Управление приёмом ответов, показ результатов и выгрузка.
+ * Слева — вопрос и результаты, справа сверху — QR и ссылка для участников,
+ * снизу — управление приёмом ответов, переходами и выгрузкой.
  */
 export function PresenterScreen({
   poll,
@@ -55,12 +60,30 @@ export function PresenterScreen({
   const isLast = session.currentIndex >= poll.questions.length - 1;
   const isQuizQuestion = question?.kind === "quiz";
 
+  const [origin, setOrigin] = useState("");
+  const [copied, setCopied] = useState(false);
+  useEffect(() => setOrigin(window.location.origin), []);
+
+  const joinUrl = origin ? `${origin}/poll/${session.code}` : "";
+  const qr = useMemo(() => (joinUrl ? qrDataUrl(joinUrl) : ""), [joinUrl]);
+
+  const copyLink = async () => {
+    if (!joinUrl) return;
+    try {
+      await navigator.clipboard.writeText(joinUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // буфер обмена недоступен — ссылку видно текстом
+    }
+  };
+
   return (
     <section className="overflow-hidden rounded-card border border-[var(--line)] bg-white shadow-[var(--shadow-brand)]">
       {/* ------------------------------------------------------- Шапка экрана */}
       <div className="mesh mesh--accent px-7 py-6">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div className="min-w-0">
+        <div className="flex flex-wrap items-start justify-between gap-6">
+          <div className="min-w-0 flex-1">
             <p className="eyebrow eyebrow--light mb-1.5">Экран ведущего</p>
             <h2 className="m-0 mb-2 font-display text-[clamp(22px,2.6vw,30px)] leading-tight font-semibold tracking-[-0.035em] text-white">
               {poll.title}
@@ -72,16 +95,41 @@ export function PresenterScreen({
             </div>
           </div>
 
-          <div className="text-right">
-            <p className="m-0 mb-1 text-micro font-semibold tracking-[0.14em] text-sky-light uppercase">
-              Код для участников
-            </p>
-            <p className="m-0 font-display text-display-sm leading-none font-semibold tracking-[0.08em] text-white">
-              {session.code}
-            </p>
-            <p className="m-0 mt-1.5 text-micro text-white/60">
-              mashuk.online · ввести код с телефона
-            </p>
+          {/* Как присоединиться: QR + код + ссылка */}
+          <div className="flex items-center gap-4 rounded-2xl bg-white/12 p-3 backdrop-blur">
+            {qr && (
+              // eslint-disable-next-line @next/next/no-img-element -- QR генерируется в браузере
+              <img
+                src={qr}
+                alt={`QR-код для входа в опрос ${session.code}`}
+                width={116}
+                height={116}
+                className="rounded-xl bg-white p-1.5"
+              />
+            )}
+            <div className="min-w-38">
+              <p className="m-0 mb-1 text-micro font-semibold tracking-[0.14em] text-sky-light uppercase">
+                Код для участников
+              </p>
+              <p className="m-0 font-display text-display-sm leading-none font-semibold tracking-[0.08em] text-white">
+                {session.code}
+              </p>
+              {joinUrl && (
+                <>
+                  <p className="m-0 mt-2 max-w-52 truncate text-micro text-white/70" title={joinUrl}>
+                    {joinUrl.replace(/^https?:\/\//, "")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={copyLink}
+                    className="mt-2 inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full bg-white/20 px-3 text-micro font-semibold text-white transition-colors duration-200 hover:bg-white/30"
+                  >
+                    {copied ? <Check size={12} /> : <Copy size={12} />}
+                    {copied ? "Скопировано" : "Скопировать ссылку"}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -140,9 +188,7 @@ export function PresenterScreen({
             <h3 className="m-0 mb-2 font-display text-[clamp(24px,3.2vw,38px)] leading-[1.1] font-semibold tracking-[-0.04em] text-navy">
               {question.title}
             </h3>
-            {question.hint && (
-              <p className="m-0 mb-5 text-ui text-ink-soft">{question.hint}</p>
-            )}
+            {question.hint && <p className="m-0 mb-5 text-ui text-ink-soft">{question.hint}</p>}
 
             <div className="mt-6">
               {session.showResults ? (
@@ -154,9 +200,7 @@ export function PresenterScreen({
                     members={members}
                     anonymous={poll.anonymous}
                   />
-                  {isQuizQuestion && (
-                    <Leaderboard poll={poll} session={session} members={members} />
-                  )}
+                  {isQuizQuestion && <Leaderboard poll={poll} session={session} members={members} />}
                 </div>
               ) : (
                 <div className="grid min-h-50 place-items-center rounded-panel border border-dashed border-[var(--line)] bg-navy/2 px-6 text-center">
@@ -166,7 +210,7 @@ export function PresenterScreen({
                     </p>
                     <p className="m-0 text-meta text-ink-faint">
                       {session.accepting
-                        ? "Участники отвечают с телефона. Нажмите «Показать ответы», когда будете готовы обсудить."
+                        ? "Участники отвечают с телефона по QR-коду или ссылке наверху. Нажмите «Показать ответы», когда будете готовы обсудить."
                         : "Нажмите «Показать ответы», чтобы вывести результаты в зал."}
                     </p>
                   </div>
@@ -200,104 +244,6 @@ export function PresenterScreen({
         </button>
 
         <span className="mx-1 hidden h-5 w-px bg-[var(--line)] sm:block" />
-
-        <div className="ml-auto flex flex-wrap gap-2">
-          <button type="button" onClick={onToggleAccepting} className={toolButton}>
-            {session.accepting ? <Lock size={14} /> : <LockOpen size={14} />}
-            {session.accepting ? "Закрыть приём" : "Открыть приём"}
-          </button>
-          <button type="button" onClick={onToggleResults} className={toolButton}>
-            {session.showResults ? <EyeOff size={14} /> : <Eye size={14} />}
-            {session.showResults ? "Скрыть ответы" : "Показать ответы"}
-          </button>
-        </div>
-      </div>
-
-      {/* ------------------------------------------------------------ Вопрос */}
-      <div className="px-7 py-6">
-        {question ? (
-          <>
-            <div className="mb-4 flex flex-wrap items-center gap-3">
-              <span className="font-display text-meta font-semibold tracking-[0.12em] text-gold-ink uppercase">
-                Вопрос {session.currentIndex + 1} из {poll.questions.length}
-              </span>
-              <span className="tag">{QUESTION_KIND_LABELS[question.kind]}</span>
-              {question.kind === "quiz" && (
-                <span className="tag">
-                  {question.points} очков · {question.timeLimit} с на ответ
-                </span>
-              )}
-              {question.kind === "open" && (
-                <span className="tag">
-                  {question.visual === "cloud" ? "облако слов" : "список ответов"}
-                </span>
-              )}
-            </div>
-
-            <h3 className="m-0 mb-2 font-display text-[clamp(24px,3.2vw,38px)] leading-[1.1] font-semibold tracking-[-0.04em] text-navy">
-              {question.title}
-            </h3>
-            {question.hint && (
-              <p className="m-0 mb-5 text-ui text-ink-soft">{question.hint}</p>
-            )}
-
-            <div className="mt-6">
-              {session.showResults ? (
-                <div className="flex flex-col gap-4">
-                  <QuestionResults
-                    poll={poll}
-                    question={question}
-                    session={session}
-                    members={members}
-                    anonymous={poll.anonymous}
-                  />
-                  {isQuizQuestion && (
-                    <Leaderboard poll={poll} session={session} members={members} />
-                  )}
-                </div>
-              ) : (
-                <div className="grid min-h-50 place-items-center rounded-panel border border-dashed border-[var(--line)] bg-navy/2 px-6 text-center">
-                  <div>
-                    <p className="m-0 mb-1.5 font-display text-lg font-semibold text-navy">
-                      {session.accepting ? "Идёт приём ответов" : "Ответы скрыты на экране"}
-                    </p>
-                    <p className="m-0 text-meta text-ink-faint">
-                      {session.accepting
-                        ? "Участники отвечают с телефона. Нажмите «Показать ответы», когда будете готовы обсудить."
-                        : "Нажмите «Показать ответы», чтобы вывести результаты в зал."}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <p className="m-0 text-sm text-ink-soft">В этом опросе пока нет вопросов.</p>
-        )}
-      </div>
-
-      {/* ------------------------------------------------------- Нижняя панель */}
-      <div className="flex flex-wrap items-center gap-2.5 border-t border-[var(--line)] bg-[var(--color-sky-pale)] px-7 py-4">
-        <button
-          type="button"
-          onClick={onPrevious}
-          disabled={session.currentIndex === 0}
-          className={toolButton}
-        >
-          <ChevronLeft size={14} />
-          Назад
-        </button>
-        <button type="button" onClick={onNext} className={`${toolButton} bg-navy text-white`}>
-          {isLast ? "К результатам" : "Следующий вопрос"}
-          <ChevronRight size={14} />
-        </button>
-        <button type="button" onClick={onFinish} className={toolButton}>
-          <Flag size={14} />
-          Завершить опрос
-        </button>
-
-        <span className="mx-1 hidden h-5 w-px bg-[var(--line)] sm:block" />
-
 
         <div className="ml-auto flex flex-wrap gap-2">
           <button type="button" onClick={onExportCsv} className={toolButton}>

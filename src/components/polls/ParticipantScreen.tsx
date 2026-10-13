@@ -13,6 +13,9 @@ interface ParticipantScreenProps {
   currentUser: Member;
   secondsLeft: number | null;
   onSubmit: (value: AnswerValue) => void;
+  /** Подпись «так это выглядит на телефоне» — на экране ведущего она уместна,
+   * на отдельной странице входа в опрос — нет. */
+  showHint?: boolean;
 }
 
 /**
@@ -27,6 +30,7 @@ export function ParticipantScreen({
   currentUser,
   secondsLeft,
   onSubmit,
+  showHint = true,
 }: ParticipantScreenProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [text, setText] = useState("");
@@ -60,10 +64,12 @@ export function ParticipantScreen({
 
   return (
     <div className="mx-auto w-full max-w-95">
-      <div className="mb-3 flex items-center gap-2 px-1 text-caption text-ink-faint">
-        <Smartphone size={14} />
-        Экран участника — так это выглядит на телефоне
-      </div>
+      {showHint && (
+        <div className="mb-3 flex items-center gap-2 px-1 text-caption text-ink-faint">
+          <Smartphone size={14} />
+          Экран участника — так это выглядит на телефоне
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-4xl border border-[var(--line)] bg-white shadow-[var(--shadow-brand)]">
         <div className="mesh mesh--accent px-5 py-4">
