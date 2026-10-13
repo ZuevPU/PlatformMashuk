@@ -4,7 +4,6 @@ import {
   loadChatData,
   loadMembers,
   loadPollData,
-  programIdBySlug,
 } from "./db/queries";
 import type { Viewer } from "./db/queries";
 import type { ChatData, Member, MemberRole, PollData, Post } from "./types";
@@ -28,11 +27,9 @@ export interface HubAccess {
 }
 
 export async function getHubAccess(programSlug: string): Promise<HubAccess | null> {
-  const [access, programId] = await Promise.all([
-    getViewer(programSlug),
-    programIdBySlug(programSlug),
-  ]);
-  if (!access || !programId) return null;
+  const access = await getViewer(programSlug);
+  if (!access) return null;
+  const { programId } = access;
 
   return {
     programId,

@@ -12,7 +12,9 @@ import * as schema from "./schema";
  */
 function createDb(url: string) {
   const client = postgres(url, {
-    max: 5,
+    // Всплеск в зале — 150 ответов на опрос за секунды. Пул должен вмещать его,
+    // но оставаться в пределах max_connections Postgres (по умолчанию 100).
+    max: Number(process.env.DB_POOL_MAX) || 20,
     idle_timeout: 20,
     connect_timeout: 10,
     prepare: false,

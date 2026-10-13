@@ -308,19 +308,32 @@ export async function loadChannel(
 
 /* --- Опросы ------------------------------------------------------------- */
 
+/**
+ * Опросы программы. С onlySessionId — только одна сессия и её опрос:
+ * так во время живого опроса браузер подтягивает свежие ответы, не читая
+ * заново все прошлые опросы программы.
+ */
 export async function loadPollData(
   programId: number,
   programSlug: string,
   viewer: Viewer,
+  onlySessionId?: string,
 ): Promise<PollData> {
   const db = getDb();
   if (!db) return { polls: [], sessions: [], templates: POLL_TEMPLATES };
 
-  const pollRows = await db
-    .select()
-    .from(schema.polls)
-    .where(eq(schema.polls.programId, programId))
-    .orderBy(desc(schema.polls.createdAt));
+  const pollRows = onlySessionId
+    ? await db
+        .select({ poll: schema.polls })
+        .from(schema.polls)
+        .innerJoin(schema.pollSessions, eq(schema.pollSessions.pollId, schema.polls.id))
+        .where(and(eq(schema.polls.programId, programId), eq(schema.pollSessions.id, onlySessionId)))
+        .then((rows) => rows.map((row) => row.poll))
+    : await db
+        .select()
+        .from(schema.polls)
+        .where(eq(schema.polls.programId, programId))
+        .orderBy(desc(schema.polls.createdAt));
 
   if (pollRows.length === 0) {
     return { polls: [], sessions: [], templates: POLL_TEMPLATES };
@@ -333,7 +346,14 @@ export async function loadPollData(
       .from(schema.pollQuestions)
       .where(inArray(schema.pollQuestions.pollId, pollIds))
       .orderBy(asc(schema.pollQuestions.position)),
-    db.select().from(schema.pollSessions).where(inArray(schema.pollSessions.pollId, pollIds)),
+    db
+      .select()
+      .from(schema.pollSessions)
+      .where(
+        onlySessionId
+          ? eq(schema.pollSessions.id, onlySessionId)
+          : inArray(schema.pollSessions.pollId, pollIds),
+      ),
   ]);
 
   // Участник не видит черновики: опрос появляется у него, когда ведущий его запустил

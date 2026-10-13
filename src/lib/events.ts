@@ -39,7 +39,6 @@ export type LiveEvent =
       programSlug: string;
       sessionId: string;
       questionId: string;
-      total: number;
     };
 
 /** Кому адресовано событие: для бесед — только их участникам. */

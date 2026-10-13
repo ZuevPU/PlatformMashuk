@@ -57,14 +57,8 @@ async function requireContext(
   const staff = viewer.role === "admin" || viewer.role === "moderator";
   if (options.staff && !staff) return { error: "Это может сделать только команда программы" };
 
-  const [program] = await db
-    .select({ id: schema.programs.id })
-    .from(schema.programs)
-    .where(eq(schema.programs.slug, programSlug));
-  if (!program) return { error: "Программа не найдена" };
-
   return {
-    context: { memberId: viewer.user.member.id, role: viewer.role, programId: program.id, staff },
+    context: { memberId: viewer.user.member.id, role: viewer.role, programId: viewer.programId, staff },
   };
 }
 
@@ -293,17 +287,28 @@ export async function submitPollResponseAction(input: {
   if ("error" in result || !db) return fail((result as { error: string }).error);
   if (!isId(input.sessionId) || !isId(input.questionId)) return fail("Опрос не найден");
 
-  const [session] = await db
+  // Сессия, опрос и вопрос — одним запросом: во время опроса это самое частое действие
+  const [row] = await db
     .select({
-      id: schema.pollSessions.id,
-      pollId: schema.pollSessions.pollId,
+      sessionId: schema.pollSessions.id,
       accepting: schema.pollSessions.accepting,
       status: schema.pollSessions.status,
       currentIndex: schema.pollSessions.currentIndex,
       anonymous: schema.polls.anonymous,
+      questionId: schema.pollQuestions.id,
+      kind: schema.pollQuestions.kind,
+      options: schema.pollQuestions.options,
+      position: schema.pollQuestions.position,
     })
     .from(schema.pollSessions)
     .innerJoin(schema.polls, eq(schema.polls.id, schema.pollSessions.pollId))
+    .leftJoin(
+      schema.pollQuestions,
+      and(
+        eq(schema.pollQuestions.pollId, schema.pollSessions.pollId),
+        eq(schema.pollQuestions.id, input.questionId),
+      ),
+    )
     .where(
       and(
         eq(schema.pollSessions.id, input.sessionId),
@@ -311,27 +316,13 @@ export async function submitPollResponseAction(input: {
       ),
     );
 
-  if (!session) return fail("Опрос не найден");
-  if (session.status !== "live" || !session.accepting) return fail("Приём ответов закрыт");
-
-  const [question] = await db
-    .select({
-      id: schema.pollQuestions.id,
-      kind: schema.pollQuestions.kind,
-      options: schema.pollQuestions.options,
-      position: schema.pollQuestions.position,
-    })
-    .from(schema.pollQuestions)
-    .where(
-      and(
-        eq(schema.pollQuestions.id, input.questionId),
-        eq(schema.pollQuestions.pollId, session.pollId),
-      ),
-    );
-
-  if (!question || question.position !== session.currentIndex) {
+  if (!row) return fail("Опрос не найден");
+  if (row.status !== "live" || !row.accepting) return fail("Приём ответов закрыт");
+  if (!row.questionId || !row.kind || row.position !== row.currentIndex) {
     return fail("Этот вопрос уже закрыт");
   }
+  const session = { id: row.sessionId, anonymous: row.anonymous };
+  const question = { id: row.questionId, kind: row.kind, options: row.options ?? [] };
 
   const value = cleanAnswer(question.kind, question.options, input.value);
   if (!value) return fail("Ответ не распознан");
@@ -355,22 +346,11 @@ export async function submitPollResponseAction(input: {
 
   if (inserted.length === 0) return fail("Вы уже ответили на этот вопрос");
 
-  const [{ total }] = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(schema.pollResponses)
-    .where(
-      and(
-        eq(schema.pollResponses.sessionId, session.id),
-        eq(schema.pollResponses.questionId, question.id),
-      ),
-    );
-
   publish({
     type: "poll-responses",
     programSlug: input.programSlug,
     sessionId: session.id,
     questionId: question.id,
-    total: Number(total),
   });
   return { ok: true };
 }

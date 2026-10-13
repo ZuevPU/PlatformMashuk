@@ -30,7 +30,7 @@ type LiveMessage =
       accepting: boolean;
       showResults: boolean;
     }
-  | { type: "poll-responses"; sessionId: string; questionId: string; total: number };
+  | { type: "poll-responses"; sessionId: string; questionId: string };
 
 const DELAY: Record<HubPart, number> = {
   chats: 250,
@@ -46,6 +46,42 @@ export function useLiveHub(programSlug: string, initial: HubParts, staff: boolea
   const timers = useRef(new Map<HubPart, ReturnType<typeof setTimeout>>());
   const partsRef = useRef(parts);
   partsRef.current = parts;
+
+  /**
+   * Свежие ответы одной живой сессии — без прошлых опросов программы.
+   * Ведущему быстро, участникам с разбросом: 150 телефонов в зале
+   * не должны обращаться к серверу в одну и ту же секунду.
+   */
+  const sessionTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const refreshSession = useCallback(
+    (sessionId: string) => {
+      if (sessionTimers.current.has(sessionId)) return;
+      const delay = staff ? 400 : 1200 + Math.random() * 1500;
+      const timer = setTimeout(async () => {
+        sessionTimers.current.delete(sessionId);
+        try {
+          const response = await fetch(
+            `/api/hub/polls?program=${encodeURIComponent(programSlug)}&session=${encodeURIComponent(sessionId)}`,
+            { cache: "no-store" },
+          );
+          const body = (await response.json()) as { ok: boolean; data?: HubParts["polls"] };
+          const fresh = body.data?.sessions[0];
+          if (!body.ok || !fresh) return;
+          setParts((previous) => ({
+            ...previous,
+            polls: {
+              ...previous.polls,
+              sessions: previous.polls.sessions.map((item) => (item.id === fresh.id ? fresh : item)),
+            },
+          }));
+        } catch {
+          // сеть недоступна — догоним при переподключении потока
+        }
+      }, delay);
+      sessionTimers.current.set(sessionId, timer);
+    },
+    [programSlug, staff],
+  );
 
   const refresh = useCallback(
     (part: HubPart) => {
@@ -131,12 +167,14 @@ export function useLiveHub(programSlug: string, initial: HubParts, staff: boolea
             },
           }));
           // Новая для участника сессия или открытые результаты — нужны вопросы и ответы
-          if (!before || (event.showResults && !before.showResults)) refresh("polls");
+          // Новая для участника сессия — нужны вопросы опроса; открытые результаты — только ответы
+          if (!before) refresh("polls");
+          else if (event.showResults && !before.showResults) refreshSession(event.sessionId);
           break;
         }
         case "poll-responses": {
           const session = partsRef.current.polls.sessions.find((item) => item.id === event.sessionId);
-          if (staff || session?.showResults) refresh("polls");
+          if (staff || session?.showResults) refreshSession(event.sessionId);
           break;
         }
       }
@@ -151,13 +189,16 @@ export function useLiveHub(programSlug: string, initial: HubParts, staff: boolea
     document.addEventListener("visibilitychange", onVisible);
 
     const pending = timers.current;
+    const pendingSessions = sessionTimers.current;
     return () => {
       source.close();
       document.removeEventListener("visibilitychange", onVisible);
       for (const timer of pending.values()) clearTimeout(timer);
+      for (const timer of pendingSessions.values()) clearTimeout(timer);
       pending.clear();
+      pendingSessions.clear();
     };
-  }, [programSlug, refresh, router, staff]);
+  }, [programSlug, refresh, refreshSession, router, staff]);
 
   return { parts, connected, refresh };
 }

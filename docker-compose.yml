@@ -61,6 +61,7 @@ services:
       # Ключ для обезличенных ответов в опросах: задайте один раз и не меняйте
       AUTH_SECRET: ${AUTH_SECRET:-}
       STORAGE_DIR: /app/storage
+      DB_POOL_MAX: ${DB_POOL_MAX:-20}
     volumes:
       - uploads:/app/public/uploads
       # Авторские сборки программ: закрыты от посторонних, переживают обновления

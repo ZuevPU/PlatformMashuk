@@ -133,37 +133,56 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
  * Роль участника в конкретной программе — источник прав.
  * Администратор Центра — администратор любой программы.
  */
-export const getProgramRole = cache(
-  async (memberId: string, programSlug: string): Promise<MemberRole | null> => {
+/**
+ * Роль человека в программе и id программы — одним запросом.
+ * Администратор Центра — администратор любой программы.
+ */
+const getProgramAccess = cache(
+  async (
+    memberId: string,
+    programSlug: string,
+    isCenterAdmin: boolean,
+  ): Promise<{ role: MemberRole; programId: number } | null> => {
     const db = getDb();
     if (!db) return null;
 
     const [row] = await db
-      .select({ role: schema.programMembers.role })
-      .from(schema.programMembers)
-      .innerJoin(schema.programs, eq(schema.programs.id, schema.programMembers.programId))
-      .where(
+      .select({ programId: schema.programs.id, role: schema.programMembers.role })
+      .from(schema.programs)
+      .leftJoin(
+        schema.programMembers,
         and(
+          eq(schema.programMembers.programId, schema.programs.id),
           eq(schema.programMembers.memberId, memberId),
-          eq(schema.programs.slug, programSlug),
         ),
-      );
+      )
+      .where(eq(schema.programs.slug, programSlug));
 
-    if (row) return row.role;
-
-    const user = await getSessionUser();
-    return user?.member.id === memberId && user.isCenterAdmin ? "admin" : null;
+    if (!row) return null;
+    if (row.role) return { role: row.role, programId: row.programId };
+    return isCenterAdmin ? { role: "admin", programId: row.programId } : null;
   },
 );
 
-/** Кто смотрит программу и с какой ролью; null — доступа нет. */
+/** Роль участника в конкретной программе — источник прав. */
+export async function getProgramRole(memberId: string, programSlug: string): Promise<MemberRole | null> {
+  const user = await getSessionUser();
+  const access = await getProgramAccess(
+    memberId,
+    programSlug,
+    Boolean(user?.isCenterAdmin && user.member.id === memberId),
+  );
+  return access?.role ?? null;
+}
+
+/** Кто смотрит программу, с какой ролью и в какой программе; null — доступа нет. */
 export async function getViewer(
   programSlug: string,
-): Promise<{ user: SessionUser; role: MemberRole } | null> {
+): Promise<{ user: SessionUser; role: MemberRole; programId: number } | null> {
   const user = await getSessionUser();
   if (!user) return null;
-  const role = await getProgramRole(user.member.id, programSlug);
-  return role ? { user, role } : null;
+  const access = await getProgramAccess(user.member.id, programSlug, user.isCenterAdmin);
+  return access ? { user, ...access } : null;
 }
 
 export async function destroySession(): Promise<void> {
