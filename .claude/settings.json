@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./pnpm-lock.yaml)",
+      "Read(./drizzle/meta/**)",
+      "Read(./public/uploads/**)",
+      "Read(./src/assets/fonts/**)",
+      "Read(./node_modules/**)",
+      "Read(./.next/**)"
+    ]
+  }
+}
