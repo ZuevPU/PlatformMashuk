@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,25 +8,31 @@ import {
   ArrowLeft,
   BarChart3,
   CalendarDays,
+  ExternalLink,
   FileText,
+  LayoutTemplate,
   LogOut,
-  MessagesSquare,
   MapPin,
+  MessagesSquare,
+  Megaphone,
+  Settings,
   Users,
 } from "lucide-react";
 import { Channel } from "./Channel";
 import type { ComposerPayload } from "./Composer";
 import { MembersView } from "./MembersView";
+import { useLiveHub } from "./useLiveHub";
 import { ChatView } from "@/components/chat/ChatView";
 import { PollsView } from "@/components/polls/PollsView";
+import { DaySchedule } from "@/components/programs/DaySchedule";
+import { StatusChip } from "@/components/programs/StatusChip";
 import {
   addCommentAction,
   createPostAction,
-  toggleCommentReactionAction,
   togglePinAction,
-  togglePostReactionAction,
+  toggleReactionAction,
 } from "@/app/programs/[slug]/hub/actions";
-import { StatusChip } from "@/components/programs/StatusChip";
+import { logoutAction } from "@/lib/auth-actions";
 import {
   addComment,
   addReply,
@@ -38,16 +44,16 @@ import {
   togglePinned,
   togglePostReaction,
 } from "@/lib/hub-actions";
-import { visibleConversations } from "@/lib/chat-actions";
+import { unreadCount, visibleConversations } from "@/lib/chat-actions";
 import { localIsoNow } from "@/lib/dates";
-import { SEASONS } from "@/lib/brand";
+import { SEASONS, seasonStyle } from "@/lib/brand";
+import type { HubParts } from "@/lib/hub-data";
 import type {
-  ChatData,
-  HubData,
+  Comment,
   Member,
   MemberRole,
-  PollData,
   Post,
+  ProgramDay,
   ProgramStatus,
   SeasonKey,
 } from "@/lib/types";
@@ -64,16 +70,12 @@ export interface HubProgram {
   location: string;
   participants?: number;
   materialsCount: number;
-  postsCount: number;
+  days: ProgramDay[];
+  hasBuild: boolean;
+  landing?: { url: string; code?: string };
 }
 
-type Section = "channel" | "chats" | "members" | "polls";
-
-const ROLE_TABS: { key: MemberRole; label: string }[] = [
-  { key: "admin", label: "Администратор" },
-  { key: "moderator", label: "Модератор" },
-  { key: "participant", label: "Участник" },
-];
+export type HubSection = "channel" | "schedule" | "build" | "chats" | "members" | "polls";
 
 export interface HubSession {
   memberId: string;
@@ -81,148 +83,197 @@ export interface HubSession {
   role: MemberRole;
 }
 
+/** Свои посты и комментарии, ещё не подтверждённые базой. */
+type PendingOp =
+  | { kind: "post"; post: Post }
+  | { kind: "comment"; postId: string; comment: Comment }
+  | { kind: "reply"; postId: string; parentId: string; comment: Comment };
+
+function collectIds(posts: Post[]): Set<string> {
+  const ids = new Set<string>();
+  const walk = (comments: Comment[]) => {
+    for (const comment of comments) {
+      ids.add(comment.id);
+      walk(comment.replies);
+    }
+  };
+  for (const post of posts) {
+    ids.add(post.id);
+    walk(post.comments);
+  }
+  return ids;
+}
+
+function applyPending(server: Post[], ops: PendingOp[]): Post[] {
+  const known = collectIds(server);
+  let posts = server;
+  for (const op of ops) {
+    if (op.kind === "post" && !known.has(op.post.id)) posts = [op.post, ...posts];
+    if (op.kind === "comment" && !known.has(op.comment.id)) {
+      posts = addComment(posts, op.postId, op.comment);
+    }
+    if (op.kind === "reply" && !known.has(op.comment.id)) {
+      posts = addReply(posts, op.postId, op.parentId, op.comment);
+    }
+  }
+  return sortPosts(posts);
+}
+
 export function HubApp({
   program,
-  hub,
-  polls,
-  chat,
-  session = null,
+  initial,
+  session,
   initialSection = "channel",
 }: {
   program: HubProgram;
-  hub: HubData;
-  polls: PollData;
-  chat: ChatData;
-  session?: HubSession | null;
-  initialSection?: Section;
+  initial: HubParts;
+  session: HubSession;
+  initialSection?: HubSection;
 }) {
   const router = useRouter();
-  const [role, setRole] = useState<MemberRole>(session?.role ?? "moderator");
-  const [section, setSection] = useState<Section>(initialSection);
-  const [posts, setPosts] = useState<Post[]>(hub.posts);
+  const staff = session.role === "admin" || session.role === "moderator";
+  const { parts } = useLiveHub(program.slug, initial, staff);
+
+  const [section, setSection] = useState<HubSection>(initialSection);
+  const [posts, setPosts] = useState<Post[]>(parts.channel);
   const [actionError, setActionError] = useState<string | null>(null);
+  const pendingOps = useRef<PendingOp[]>([]);
 
-  /** Запись в базу доступна только вошедшему участнику */
-  const persist = Boolean(session);
+  // Свежая лента с сервера + свои неподтверждённые записи
+  useEffect(() => {
+    const known = collectIds(parts.channel);
+    pendingOps.current = pendingOps.current.filter((op) =>
+      op.kind === "post" ? !known.has(op.post.id) : !known.has(op.comment.id),
+    );
+    setPosts(applyPending(parts.channel, pendingOps.current));
+  }, [parts.channel]);
 
-  const openSection = (next: Section) => {
+  const openSection = (next: HubSection) => {
     setSection(next);
-    // Ссылку на раздел можно переслать: /hub?tab=members
+    // Ссылку на раздел можно переслать: /hub?tab=chats
     router.replace(next === "channel" ? "?" : `?tab=${next}`, { scroll: false });
   };
 
   const season = SEASONS[program.season];
+  const members = parts.members;
 
-  const currentUser = useMemo<Member>(() => {
-    if (session) {
-      const known = hub.members.find((member) => member.id === session.memberId);
-      if (known) return known;
-      return { id: session.memberId, name: session.name, role: session.role };
-    }
-    const byRole = hub.members.find((member) => member.role === role);
-    if (byRole) return byRole;
-    return hub.members.find((member) => member.id === hub.currentUserId) ?? hub.members[0];
-  }, [hub.currentUserId, hub.members, role, session]);
+  const currentUser = useMemo<Member>(
+    () =>
+      members.find((member) => member.id === session.memberId) ?? {
+        id: session.memberId,
+        name: session.name,
+        role: session.role,
+      },
+    [members, session],
+  );
 
-  const names = useMemo(() => buildMentionNames(hub.members), [hub.members]);
+  const names = useMemo(() => buildMentionNames(members), [members]);
 
-  const canPost = role === "admin" || role === "moderator";
-  const canModerate = canPost;
-  const effectiveRole = session?.role ?? role;
+  const report = (result: { ok: true } | { ok: false; error: string }) => {
+    if (!result.ok) setActionError(result.error);
+  };
+
+  const track = (op: PendingOp, run: () => Promise<{ ok: true } | { ok: false; error: string }>) => {
+    pendingOps.current.push(op);
+    void run().then((result) => {
+      if (result.ok) return;
+      pendingOps.current = pendingOps.current.filter((item) => item !== op);
+      setPosts(applyPending(parts.channel, pendingOps.current));
+      setActionError(result.error);
+    });
+  };
 
   const publish = (payload: ComposerPayload) => {
-    setPosts((previous) =>
-      sortPosts([
-        createPost({
-          programSlug: program.slug,
-          authorId: currentUser.id,
-          title: payload.title,
-          body: payload.body,
-          attachments: payload.attachments,
-          createdAt: localIsoNow(),
-        }),
-        ...previous,
-      ]),
-    );
-
-    // Интерфейс обновляется сразу, запись уходит в базу следом
-    if (persist) {
-      void createPostAction({
+    const post = createPost({
+      programSlug: program.slug,
+      authorId: currentUser.id,
+      title: payload.title,
+      body: payload.body,
+      attachments: payload.attachments,
+      createdAt: localIsoNow(),
+    });
+    setPosts((previous) => sortPosts([post, ...previous]));
+    track({ kind: "post", post }, () =>
+      createPostAction({
         programSlug: program.slug,
+        id: post.id,
         title: payload.title,
         body: payload.body,
         attachments: payload.attachments,
-      }).then((result) => {
-        if (!result.ok) setActionError(result.error);
-      });
-    }
+      }),
+    );
   };
 
   const handlers = {
     onToggleReaction: (postId: string, emoji: string) => {
       setPosts((previous) => togglePostReaction(previous, postId, emoji));
-      if (persist) {
-        void togglePostReactionAction({ programSlug: program.slug, postId, emoji });
-      }
+      void toggleReactionAction({
+        programSlug: program.slug,
+        targetType: "post",
+        targetId: postId,
+        emoji,
+      }).then(report);
     },
     onToggleCommentReaction: (postId: string, commentId: string, emoji: string) => {
       setPosts((previous) => toggleCommentReaction(previous, postId, commentId, emoji));
-      if (persist) {
-        void toggleCommentReactionAction({ programSlug: program.slug, commentId, emoji });
-      }
+      void toggleReactionAction({
+        programSlug: program.slug,
+        targetType: "comment",
+        targetId: commentId,
+        emoji,
+      }).then(report);
     },
     onTogglePin: (postId: string) => {
       const target = posts.find((post) => post.id === postId);
+      if (!target) return;
       setPosts((previous) => sortPosts(togglePinned(previous, postId)));
-      if (persist && target) {
-        void togglePinAction({ programSlug: program.slug, postId, pinned: !target.pinned });
-      }
+      void togglePinAction({ programSlug: program.slug, postId, pinned: !target.pinned }).then(
+        report,
+      );
     },
     onAddComment: (postId: string, payload: ComposerPayload) => {
-      setPosts((previous) =>
-        addComment(
-          previous,
-          postId,
-          createComment({ authorId: currentUser.id, body: payload.body, createdAt: localIsoNow() }),
-        ),
+      const comment = createComment({
+        authorId: currentUser.id,
+        body: payload.body,
+        createdAt: localIsoNow(),
+      });
+      setPosts((previous) => addComment(previous, postId, comment));
+      track({ kind: "comment", postId, comment }, () =>
+        addCommentAction({ programSlug: program.slug, id: comment.id, postId, body: payload.body }),
       );
-      if (persist) {
-        void addCommentAction({ programSlug: program.slug, postId, body: payload.body }).then(
-          (result) => {
-            if (!result.ok) setActionError(result.error);
-          },
-        );
-      }
     },
     onAddReply: (postId: string, commentId: string, payload: ComposerPayload) => {
-      setPosts((previous) =>
-        addReply(
-          previous,
-          postId,
-          commentId,
-          createComment({ authorId: currentUser.id, body: payload.body, createdAt: localIsoNow() }),
-        ),
-      );
-      if (persist) {
-        void addCommentAction({
+      const comment = createComment({
+        authorId: currentUser.id,
+        body: payload.body,
+        createdAt: localIsoNow(),
+      });
+      setPosts((previous) => addReply(previous, postId, commentId, comment));
+      track({ kind: "reply", postId, parentId: commentId, comment }, () =>
+        addCommentAction({
           programSlug: program.slug,
+          id: comment.id,
           postId,
           parentId: commentId,
           body: payload.body,
-        });
-      }
+        }),
+      );
     },
   };
+
+  const conversations = visibleConversations(parts.chats.conversations, currentUser.id);
+  const unread = conversations.reduce(
+    (total, conversation) =>
+      total + unreadCount(parts.chats.messages, conversation.id, currentUser.id, parts.chats.readState),
+    0,
+  );
+  const livePoll = parts.polls.sessions.some((item) => item.status === "live");
+  const hasBuildSection = program.hasBuild || Boolean(program.landing);
 
   return (
     <div
       data-season={program.season}
-      style={
-        {
-          "--accent": season.accent,
-          "--accent-strong": season.strong,
-        } as CSSProperties
-      }
+      style={seasonStyle(program.season) as CSSProperties}
       className="bg-paper-warm py-8 md:py-10"
     >
       <div className="wrap">
@@ -231,91 +282,66 @@ export function HubApp({
           <div className="min-w-0">
             <Link
               href={`/programs/${program.slug}`}
-              className="mb-3 inline-flex items-center gap-2 text-[13px] font-medium text-ink-soft no-underline transition-colors duration-200 hover:text-navy"
+              className="mb-3 inline-flex items-center gap-2 text-meta font-medium text-ink-soft no-underline transition-colors duration-200 hover:text-navy"
             >
               <ArrowLeft size={14} />
               К странице программы
             </Link>
-
             <div className="flex flex-wrap items-center gap-3">
               <StatusChip status={program.status} />
-              <span className="text-[11px] font-semibold tracking-[0.16em] text-gold uppercase">
+              <span className="text-micro font-semibold tracking-[0.16em] text-gold-ink uppercase">
                 {program.subtitle}
                 {program.stream ? ` · ${program.stream}` : ""}
               </span>
-              <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold tracking-[0.08em] text-ink-faint uppercase shadow-[inset_0_0_0_1px_var(--line)]">
-                Демо-данные
-              </span>
             </div>
-
             <h1 className="m-0 mt-2.5 font-display text-[clamp(28px,4vw,44px)] leading-[1.02] font-semibold tracking-[-0.05em] text-navy">
               {program.title}
             </h1>
           </div>
 
-          {/* Сессия: если участник вошёл по приглашению, роль берётся из неё */}
           <div
-            className="rounded-[18px] border border-[var(--line)] bg-white p-3.5"
-            data-session-user={session?.memberId ?? ""}
-            data-session-role={session ? session.role : ""}
+            className="rounded-soft border border-[var(--line)] bg-white p-3.5"
+            data-session-user={session.memberId}
+            data-session-role={session.role}
           >
-            {session ? (
-              <>
-                <p className="m-0 mb-2.5 text-[11px] font-semibold tracking-[0.12em] text-gold uppercase">
-                  Вы вошли как
-                </p>
-                <p className="m-0 mb-1 font-display text-[16px] font-semibold tracking-[-0.02em] text-navy">
-                  {session.name}
-                </p>
-                <p className="m-0 mb-3 text-[12px] text-ink-faint">
-                  {MEMBER_ROLE_LABELS[effectiveRole]} программы
-                </p>
-                <form action="/api/auth/logout" method="post">
-                  <button
-                    type="submit"
-                    className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3.5 text-[12px] font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
-                  >
-                    <LogOut size={13} />
-                    Выйти
-                  </button>
-                </form>
-              </>
-            ) : (
-              <>
-                <p className="m-0 mb-2.5 text-[11px] font-semibold tracking-[0.12em] text-gold uppercase">
-                  Смотреть как
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {ROLE_TABS.map((tab) => (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      onClick={() => setRole(tab.key)}
-                      className={[
-                        "min-h-9 cursor-pointer rounded-full border px-3.5 text-[12px] font-semibold transition-all duration-200 ease-brand",
-                        role === tab.key
-                          ? "border-navy bg-navy text-white"
-                          : "border-[var(--line)] bg-white text-navy hover:-translate-y-0.5",
-                      ].join(" ")}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="m-0 mt-2.5 max-w-[260px] text-[11px] leading-snug text-ink-faint">
-                  Демонстрационный режим. Вы вошли как{" "}
-                  <b className="text-ink-soft">{currentUser.name}</b> — после подключения базы
-                  роль берётся из приглашения.
-                </p>
-              </>
-            )}
+            <p className="m-0 mb-2.5 text-micro font-semibold tracking-[0.12em] text-gold-ink uppercase">
+              Вы вошли как
+            </p>
+            <p className="m-0 mb-1 font-display text-lead font-semibold tracking-[-0.02em] text-navy">
+              {session.name}
+            </p>
+            <p className="m-0 mb-3 text-caption text-ink-faint">
+              {MEMBER_ROLE_LABELS[session.role]} программы
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {staff && (
+                <Link
+                  href={`/admin/programs/${program.slug}`}
+                  className="inline-flex min-h-9 items-center gap-2 rounded-full bg-navy px-3.5 text-caption font-semibold text-white no-underline transition-all duration-200 ease-brand hover:-translate-y-0.5 hover:bg-navy-deep"
+                >
+                  <Settings size={13} />
+                  Управление
+                </Link>
+              )}
+              <form action={logoutAction}>
+                <button
+                  type="submit"
+                  className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3.5 text-caption font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
+                >
+                  <LogOut size={13} />
+                  Выйти
+                </button>
+              </form>
+            </div>
           </div>
         </div>
 
-        {/* ------------------------------------------------------------- Сетка */}
         {actionError && (
-          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-[16px] border border-[#F24559]/40 bg-[#FDE9EC] px-5 py-3.5 text-[13px] text-[#8C2430]">
-            <span>Не удалось сохранить в базу: {actionError}</span>
+          <div
+            role="alert"
+            className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-autumn/40 bg-autumn/10 px-5 py-3.5 text-meta text-ink"
+          >
+            <span>Не удалось сохранить: {actionError}</span>
             <button
               type="button"
               onClick={() => setActionError(null)}
@@ -327,49 +353,66 @@ export function HubApp({
         )}
 
         <div className="grid gap-6 lg:grid-cols-[280px_1fr] lg:items-start">
-          <aside className="flex flex-col gap-4 lg:sticky lg:top-[96px]">
+          <aside className="flex flex-col gap-4 lg:sticky lg:top-24">
             <nav className="card gap-1 p-3" aria-label="Разделы программы">
               <NavItem
                 active={section === "channel"}
                 onClick={() => openSection("channel")}
-                icon={<MessagesSquare size={16} />}
+                icon={<Megaphone size={16} />}
                 label="Канал программы"
                 badge={String(posts.length)}
               />
+              <NavItem
+                active={section === "schedule"}
+                onClick={() => openSection("schedule")}
+                icon={<CalendarDays size={16} />}
+                label="Расписание"
+                badge={program.days.length ? `${program.days.length} дн.` : undefined}
+              />
+              {hasBuildSection && (
+                <NavItem
+                  active={section === "build"}
+                  onClick={() => openSection("build")}
+                  icon={<LayoutTemplate size={16} />}
+                  label="Сборка программы"
+                />
+              )}
               <NavItem
                 active={section === "chats"}
                 onClick={() => openSection("chats")}
                 icon={<MessagesSquare size={16} />}
                 label="Чаты"
-                badge={String(visibleConversations(chat.conversations, currentUser.id).length)}
-              />
-              <NavItem
-                active={section === "members"}
-                onClick={() => openSection("members")}
-                icon={<Users size={16} />}
-                label="Участники"
-                badge={String(hub.members.length)}
+                badge={unread ? String(unread) : String(conversations.length)}
+                highlight={unread > 0}
               />
               <NavItem
                 active={section === "polls"}
                 onClick={() => openSection("polls")}
                 icon={<BarChart3 size={16} />}
                 label="Опросы и квизы"
-                badge={String(polls.polls.length)}
+                badge={livePoll ? "идёт" : String(parts.polls.polls.length)}
+                highlight={livePoll}
               />
-              <Link
-                href={`/programs/${program.slug}#materials`}
-                className="flex items-center gap-2.5 rounded-[14px] px-3.5 py-2.5 text-[13px] font-medium text-ink-soft no-underline transition-colors duration-200 hover:bg-sky-tint hover:text-navy"
-              >
-                <FileText size={16} />
-                Материалы программы
-                <span className="ml-auto text-[11px] text-ink-faint">
-                  {program.materialsCount}
-                </span>
-              </Link>
+              <NavItem
+                active={section === "members"}
+                onClick={() => openSection("members")}
+                icon={<Users size={16} />}
+                label="Участники"
+                badge={String(members.length)}
+              />
+              {program.materialsCount > 0 && (
+                <Link
+                  href={`/programs/${program.slug}#materials`}
+                  className="flex items-center gap-2.5 rounded-field px-3.5 py-2.5 text-meta font-medium text-ink-soft no-underline transition-colors duration-200 hover:bg-sky-tint hover:text-navy"
+                >
+                  <FileText size={16} />
+                  Материалы программы
+                  <span className="ml-auto text-micro text-ink-faint">{program.materialsCount}</span>
+                </Link>
+              )}
             </nav>
 
-            <div className="card gap-3.5 p-5 text-[13px]">
+            <div className="card gap-3.5 p-5 text-meta">
               <p className="eyebrow mb-0">Программа</p>
               <ul className="m-0 grid list-none gap-3 p-0">
                 <li className="flex items-start gap-2.5 text-ink-soft">
@@ -382,7 +425,7 @@ export function HubApp({
                 </li>
                 <li className="flex items-start gap-2.5 text-ink-soft">
                   <Users size={15} className="mt-0.5 shrink-0 text-sky-ink" />
-                  {program.participants ? `${program.participants} участников` : "состав формируется"}
+                  {members.length} в рабочем пространстве
                 </li>
               </ul>
             </div>
@@ -392,43 +435,59 @@ export function HubApp({
             {section === "channel" && (
               <Channel
                 posts={posts}
-                members={hub.members}
+                members={members}
                 mentionNames={names}
                 currentUser={currentUser}
-                canPost={canPost}
-                canModerate={canModerate}
+                canPost={staff}
+                canModerate={staff}
                 onPublish={publish}
                 {...handlers}
               />
             )}
 
+            {section === "schedule" && (
+              <section className="card p-6 md:p-8">
+                <p className="eyebrow mb-2">Расписание</p>
+                <h2 className="m-0 mb-6 font-display text-[clamp(24px,3vw,34px)] leading-tight font-semibold tracking-[-0.035em] text-navy">
+                  Программа по дням
+                </h2>
+                {program.days.length ? (
+                  <DaySchedule days={program.days} accent={season.accent} />
+                ) : (
+                  <p className="m-0 text-ui text-ink-soft">Расписание скоро появится.</p>
+                )}
+              </section>
+            )}
+
+            {section === "build" && <BuildView program={program} />}
+
             {section === "chats" && (
               <ChatView
                 programSlug={program.slug}
-                data={chat}
-                members={hub.members}
+                data={parts.chats}
+                members={members}
                 currentUser={currentUser}
-                canManage={canModerate}
+                canManage={staff}
                 mentionNames={names}
-                persist={persist}
+                onError={setActionError}
               />
             )}
 
             {section === "members" && (
-              <MembersView members={hub.members} declaredCount={program.participants} />
+              <MembersView members={members} declaredCount={program.participants} />
             )}
 
             {section === "polls" && (
               <PollsView
                 programSlug={program.slug}
                 programTitle={program.title}
-                data={polls}
-                members={hub.members}
-                participantCount={program.participants ?? hub.members.length}
+                data={parts.polls}
+                members={members}
+                participantCount={Math.max(members.length - 1, 1)}
                 currentUser={currentUser}
-                canManage={canModerate}
+                canManage={staff}
                 accent={season.accent}
-                persist={persist}
+                accentInk={season.ink}
               />
             )}
           </div>
@@ -438,32 +497,90 @@ export function HubApp({
   );
 }
 
+/** Авторская сборка программы: загруженная в админке открывается здесь же. */
+function BuildView({ program }: { program: HubProgram }) {
+  if (program.hasBuild) {
+    const src = `/programs/${program.slug}/build/index.html`;
+    return (
+      <section className="card overflow-hidden p-0">
+        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--line)] px-5 py-3.5">
+          <p className="m-0 font-display text-lead font-semibold tracking-[-0.02em] text-navy">
+            Сборка программы
+          </p>
+          <a
+            href={src}
+            target="_blank"
+            rel="noopener"
+            className="ml-auto inline-flex items-center gap-1.5 text-caption font-semibold text-navy"
+          >
+            Открыть на весь экран
+            <ExternalLink size={13} />
+          </a>
+        </div>
+        <iframe
+          src={src}
+          title={`Сборка программы «${program.title}»`}
+          className="block h-[78vh] min-h-140 w-full border-0 bg-white"
+        />
+      </section>
+    );
+  }
+
+  if (!program.landing) return null;
+
+  return (
+    <section className="card p-7">
+      <p className="eyebrow mb-2">Сборка программы</p>
+      <h2 className="m-0 mb-3 font-display text-[clamp(22px,2.6vw,30px)] leading-tight font-semibold tracking-[-0.035em] text-navy">
+        Авторская страница программы
+      </h2>
+      <p className="m-0 mb-5 max-w-155 text-ui leading-relaxed text-ink-soft">
+        Все материалы, записи и итоги программы собраны на отдельной странице.
+        {program.landing.code ? " Для входа понадобится код доступа." : ""}
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <a
+          href={program.landing.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-h-12 items-center gap-2 rounded-full bg-navy px-5.5 text-sm font-semibold text-white no-underline transition-all duration-200 ease-brand hover:-translate-y-0.5 hover:bg-navy-deep"
+        >
+          Открыть сборку
+          <ExternalLink size={15} />
+        </a>
+        {program.landing.code && (
+          <span className="rounded-full bg-sky-tint px-4 py-2 text-meta text-sky-ink">
+            Код доступа: <b className="font-semibold tracking-[0.08em]">{program.landing.code}</b>
+          </span>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function NavItem({
   active = false,
-  disabled = false,
   onClick,
   icon,
   label,
   badge,
+  highlight = false,
 }: {
   active?: boolean;
-  disabled?: boolean;
   onClick?: () => void;
   icon: ReactNode;
   label: string;
   badge?: string;
+  highlight?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
+      aria-current={active ? "page" : undefined}
       className={[
-        "flex items-center gap-2.5 rounded-[14px] px-3.5 py-2.5 text-left text-[13px] font-medium transition-colors duration-200",
-        disabled
-          ? "cursor-not-allowed text-ink-faint opacity-70"
-          : "cursor-pointer hover:bg-sky-tint hover:text-navy",
-        active ? "bg-navy text-white hover:bg-navy hover:text-white" : "text-ink-soft",
+        "flex cursor-pointer items-center gap-2.5 rounded-field px-3.5 py-2.5 text-left text-meta font-medium transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy",
+        active ? "bg-navy text-white" : "text-ink-soft hover:bg-sky-tint hover:text-navy",
       ].join(" ")}
     >
       {icon}
@@ -471,8 +588,12 @@ function NavItem({
       {badge && (
         <span
           className={[
-            "ml-auto rounded-full px-2 py-0.5 text-[11px]",
-            active ? "bg-white/20 text-white" : "bg-[var(--color-sky-tint)] text-sky-ink",
+            "ml-auto rounded-full px-2 py-0.5 text-micro",
+            active
+              ? "bg-white/20 text-white"
+              : highlight
+                ? "bg-accent font-semibold text-black-ink"
+                : "bg-sky-tint text-sky-ink",
           ].join(" ")}
         >
           {badge}

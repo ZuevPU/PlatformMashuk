@@ -28,6 +28,9 @@ docker run --rm \
   -v "$BACKUP_DIR":/backup \
   alpine tar czf "/backup/uploads-$ts.tar.gz" -C /data .
 
+echo "[$(date -Is)] Архив сборок программ…"
+docker run --rm   -v mashuk_storage:/data:ro   -v "$BACKUP_DIR":/backup   alpine tar czf "/backup/storage-$ts.tar.gz" -C /data .
+
 echo "[$(date -Is)] Ротация старше $RETAIN_DAYS дней…"
 find "$BACKUP_DIR" -type f -name '*.gz' -mtime +"$RETAIN_DAYS" -delete
 

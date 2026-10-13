@@ -105,7 +105,7 @@ export function Composer({
     shouldRerenderOnTransaction: true,
     autofocus: autoFocus,
     editorProps: {
-      attributes: { class: "focus:outline-none" },
+      attributes: { class: "focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy" },
     },
   });
 
@@ -174,13 +174,13 @@ export function Composer({
   }, [editor, linkUrl]);
 
   if (!editor) {
-    return <div className="min-h-[140px] rounded-[18px] border border-[var(--line)] bg-white" />;
+    return <div className="min-h-35 rounded-soft border border-[var(--line)] bg-white" />;
   }
 
   return (
     <div
       className={[
-        "rounded-[18px] border border-[var(--line)] bg-white transition-shadow duration-200",
+        "rounded-soft border border-[var(--line)] bg-white transition-shadow duration-200",
         "focus-within:shadow-[var(--shadow-soft)]",
         compact ? "editor editor--compact" : "editor",
       ].join(" ")}
@@ -199,7 +199,7 @@ export function Composer({
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Заголовок поста (необязательно)"
-          className="w-full rounded-t-[18px] border-b border-[var(--line)] bg-transparent px-4 py-3 font-display text-[17px] font-semibold tracking-[-0.02em] text-navy outline-none placeholder:font-body placeholder:text-[15px] placeholder:font-normal placeholder:text-ink-faint"
+          className="w-full rounded-t-soft border-b border-[var(--line)] bg-transparent px-4 py-3 font-display text-lead font-semibold tracking-[-0.02em] text-navy outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy placeholder:font-body placeholder:text-body placeholder:font-normal placeholder:text-ink-faint"
         />
       )}
 
@@ -215,7 +215,7 @@ export function Composer({
               <img
                 src={attachment.url}
                 alt={attachment.alt}
-                className="size-[84px] rounded-xl border border-[var(--line)] object-cover"
+                className="size-21 rounded-xl border border-[var(--line)] object-cover"
               />
               <button
                 type="button"
@@ -233,7 +233,7 @@ export function Composer({
       )}
 
       {uploadError && (
-        <p className="m-0 px-4 pb-3 text-[12px] text-[#C1394A]">
+        <p className="m-0 px-4 pb-3 text-caption text-danger">
           Фотография не загрузилась: {uploadError}
         </p>
       )}
@@ -251,16 +251,23 @@ export function Composer({
               if (event.key === "Escape") setLinkOpen(false);
             }}
             placeholder="Адрес ссылки: example.ru"
-            className="min-h-9 min-w-[240px] flex-1 rounded-full border border-[var(--line)] bg-white px-3.5 text-[13px] outline-none focus:border-navy"
+            className="min-h-9 min-w-60 flex-1 rounded-full border border-[var(--line)] bg-white px-3.5 text-meta outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy focus:border-navy"
           />
-          <button type="button" onClick={insertLink} className="tool" data-active="true">
+          <button
+            type="button"
+            onClick={insertLink}
+            className="tool"
+            data-active="true"
+            aria-label="Вставить ссылку"
+            title="Вставить ссылку"
+          >
             <Check size={15} />
           </button>
         </div>
       )}
 
       {mentionsOpen && (
-        <div className="mx-4 mb-3 max-h-[220px] overflow-auto rounded-[14px] border border-[var(--line)] bg-white p-2">
+        <div className="mx-4 mb-3 max-h-55 overflow-auto rounded-field border border-[var(--line)] bg-white p-2">
           {mentionCandidates.map((member) => (
             <button
               key={member.id}
@@ -269,10 +276,10 @@ export function Composer({
                 editor.chain().focus().insertContent(`@${member.name.split(" ")[0]} `).run();
                 setMentionsOpen(false);
               }}
-              className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-[10px] px-3 py-2 text-left transition-colors duration-150 hover:bg-sky-tint"
+              className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-chip px-3 py-2 text-left transition-colors duration-150 hover:bg-sky-tint"
             >
-              <span className="text-[13px] font-medium text-ink">{member.name}</span>
-              <span className="text-[11px] text-ink-faint">
+              <span className="text-meta font-medium text-ink">{member.name}</span>
+              <span className="text-micro text-ink-faint">
                 {MEMBER_ROLE_LABELS[member.role]}
                 {member.position ? ` · ${member.position}` : ""}
               </span>
@@ -331,7 +338,7 @@ export function Composer({
             <button
               type="button"
               onClick={onCancel}
-              className="min-h-9 cursor-pointer rounded-full px-3.5 text-[13px] text-ink-soft transition-colors duration-200 hover:text-navy"
+              className="min-h-9 cursor-pointer rounded-full px-3.5 text-meta text-ink-soft transition-colors duration-200 hover:text-navy"
             >
               Отмена
             </button>
@@ -340,7 +347,7 @@ export function Composer({
             type="button"
             onClick={submit}
             disabled={!canSubmit}
-            className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full bg-navy px-4 text-[13px] font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full bg-navy px-4 text-meta font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Send size={14} />
             {submitLabel ?? (mode === "post" ? "Опубликовать" : "Ответить")}

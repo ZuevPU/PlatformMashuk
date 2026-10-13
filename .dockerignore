@@ -15,3 +15,5 @@ docker-compose*.yml
 deploy
 public/uploads
 !public/uploads/README.txt
+
+storage

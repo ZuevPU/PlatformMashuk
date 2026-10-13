@@ -29,6 +29,8 @@ export interface SeasonScheme {
   strong: string;
   /** Производный светлый тон акцента для подложек */
   tint: string;
+  /** Тёмный тон акцента для текста на светлом фоне (контраст ≥ 5:1) */
+  ink: string;
   /** Однотонный логотип сезона */
   logo: string;
   /** Месяцы сезона (1–12) */
@@ -42,6 +44,7 @@ export const SEASONS: Record<SeasonKey, SeasonScheme> = {
     accent: "#3AD754",
     strong: "#0B4D4D",
     tint: "#E6F8EA",
+    ink: "#18712E",
     logo: "/brand/logo/seasonal/logo_full_spring.svg",
     months: [3, 4, 5],
   },
@@ -51,6 +54,7 @@ export const SEASONS: Record<SeasonKey, SeasonScheme> = {
     accent: "#FF5B00",
     strong: "#F18300",
     tint: "#FFEDE1",
+    ink: "#B84100",
     logo: "/brand/logo/seasonal/logo_full_summer.svg",
     months: [6, 7, 8],
   },
@@ -60,6 +64,7 @@ export const SEASONS: Record<SeasonKey, SeasonScheme> = {
     accent: "#F24559",
     strong: "#F68E9A",
     tint: "#FDE9EC",
+    ink: "#B02A3C",
     logo: "/brand/logo/seasonal/logo_full_autumn.svg",
     months: [9, 10, 11],
   },
@@ -69,10 +74,24 @@ export const SEASONS: Record<SeasonKey, SeasonScheme> = {
     accent: "#4582F2",
     strong: "#D6E3FB",
     tint: "#E8F0FE",
+    ink: "#2A5BBD",
     logo: "/brand/logo/seasonal/logo_full_winter.svg",
     months: [12, 1, 2],
   },
 };
+
+/**
+ * CSS-переменные акцента программы для style={…}. Задают все токены сезона
+ * сразу, чтобы ни один не остался от другого сезона.
+ */
+export function seasonStyle(season: SeasonKey): Record<string, string> {
+  const scheme = SEASONS[season];
+  return {
+    "--accent": scheme.accent,
+    "--accent-strong": scheme.strong,
+    "--accent-ink": scheme.ink,
+  };
+}
 
 export const SEASON_ORDER: SeasonKey[] = ["spring", "summer", "autumn", "winter"];
 

@@ -13,8 +13,17 @@ import { EventEmitter } from "node:events";
  */
 
 export type LiveEvent =
-  /** Что-то изменилось в программе: страницы перечитывают состояние */
-  | { type: "program-changed"; programSlug: string }
+  /** Изменилась программа: расписание, сборка, состав — страницы перечитывают её */
+  | { type: "program"; programSlug: string }
+  /** Новый пост, комментарий, реакция или закреп в канале */
+  | { type: "channel"; programSlug: string }
+  /** Новое сообщение или реакция в беседе — только участникам беседы */
+  | { type: "message"; programSlug: string; conversationId: string; memberIds: string[] }
+  /** Создана беседа — только её участникам */
+  | { type: "conversation"; programSlug: string; conversationId: string; memberIds: string[] }
+  /** Создан опрос */
+  | { type: "polls"; programSlug: string }
+  /** Ведущий изменил состояние живой сессии опроса */
   | {
       type: "poll-session";
       programSlug: string;
@@ -24,15 +33,31 @@ export type LiveEvent =
       accepting: boolean;
       showResults: boolean;
     }
+  /** Пришёл ответ на вопрос опроса */
   | {
       type: "poll-responses";
       programSlug: string;
       sessionId: string;
       questionId: string;
       total: number;
-    }
-  | { type: "post"; programSlug: string; postId: string }
-  | { type: "message"; programSlug: string; conversationId: string };
+    };
+
+/** Кому адресовано событие: для бесед — только их участникам. */
+export function isAddressedTo(event: LiveEvent, memberId: string): boolean {
+  if (event.type === "message" || event.type === "conversation") {
+    return event.memberIds.includes(memberId);
+  }
+  return true;
+}
+
+/** Событие без служебных полей — то, что уходит в браузер. */
+export function toClient(event: LiveEvent): Record<string, unknown> {
+  if (event.type === "message" || event.type === "conversation") {
+    const { memberIds: _omit, ...rest } = event;
+    return rest;
+  }
+  return event;
+}
 
 const CHANNEL = "live";
 

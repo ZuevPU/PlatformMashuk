@@ -1,7 +1,6 @@
 import { getDb } from "@/lib/db/client";
-import { getProgramRole, getSessionUser } from "@/lib/auth";
-import { subscribe } from "@/lib/events";
-import type { LiveEvent } from "@/lib/events";
+import { getViewer } from "@/lib/auth";
+import { isAddressedTo, subscribe, toClient } from "@/lib/events";
 
 /**
  * Поток живых событий программы (Server-Sent Events).
@@ -19,11 +18,9 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const programSlug = url.searchParams.get("program") ?? "";
 
-  const user = await getSessionUser();
-  if (!user) return new Response("Нужно войти", { status: 401 });
-
-  const role = await getProgramRole(user.member.id, programSlug);
-  if (!role) return new Response("Нет доступа к программе", { status: 403 });
+  const viewer = await getViewer(programSlug);
+  if (!viewer) return new Response("Нет доступа к программе", { status: 403 });
+  const memberId = viewer.user.member.id;
 
   const encoder = new TextEncoder();
 
@@ -36,18 +33,21 @@ export async function GET(request: Request) {
         try {
           controller.enqueue(encoder.encode(chunk));
         } catch {
-          closed = true;
+          // Клиент ушёл: снимаем подписку и пинг, не дожидаясь abort
+          queueMicrotask(() => close());
         }
       };
 
-      const send = (event: LiveEvent | { type: "ready" }) => {
+      const send = (event: Record<string, unknown>) => {
         write(`data: ${JSON.stringify(event)}\n\n`);
       };
 
       send({ type: "ready" });
 
       const unsubscribe = subscribe((event) => {
-        if (event.programSlug === programSlug) send(event);
+        if (event.programSlug === programSlug && isAddressedTo(event, memberId)) {
+          send(toClient(event));
+        }
       });
 
       // Комментарий-пинг не даёт прокси закрыть соединение при простое

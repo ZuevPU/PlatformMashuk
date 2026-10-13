@@ -36,8 +36,8 @@ COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
 
-# Каталог загрузок (перекрывается томом), владелец — непривилегированный
-RUN mkdir -p /app/public/uploads && chown -R nextjs:nodejs /app/public/uploads
+# Каталоги загрузок и сборок (перекрываются томами), владелец — непривилегированный
+RUN mkdir -p /app/public/uploads /app/storage   && chown -R nextjs:nodejs /app/public/uploads /app/storage
 
 USER nextjs
 EXPOSE 4321

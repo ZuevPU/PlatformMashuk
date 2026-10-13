@@ -1,3 +1,4 @@
+import { uuid } from "./uid";
 import type {
   ChatMessage,
   Conversation,
@@ -122,7 +123,7 @@ export function createConversation(input: {
   createdAt: string;
 }): Conversation {
   return {
-    id: `conv-${input.kind}-${input.createdAt}-${Math.round(performance.now())}`,
+    id: `conv-${uuid()}`,
     programSlug: input.programSlug,
     kind: input.kind,
     title: input.title,
@@ -143,7 +144,7 @@ export function createMessage(input: {
   replyToId?: string;
 }): ChatMessage {
   return {
-    id: `msg-${input.createdAt}-${Math.round(performance.now())}`,
+    id: `msg-${uuid()}`,
     conversationId: input.conversationId,
     authorId: input.authorId,
     body: input.body,

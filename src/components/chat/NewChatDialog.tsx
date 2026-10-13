@@ -73,21 +73,21 @@ export function NewChatDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center overflow-auto bg-[rgba(10,16,20,0.45)] p-5 backdrop-blur-[3px]"
+      className="fixed inset-0 z-50 grid place-items-center overflow-auto bg-black-ink/45 p-5 backdrop-blur-[3px]"
       role="dialog"
       aria-modal="true"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-[560px] overflow-hidden rounded-[26px] border border-[var(--line)] bg-white shadow-[0_32px_90px_rgba(10,16,20,0.24)]">
+      <div className="w-full max-w-140 overflow-hidden rounded-card border border-[var(--line)] bg-white shadow-[0_32px_90px_rgba(10,16,20,0.24)]">
         <div className="mesh mesh--accent px-7 py-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="eyebrow eyebrow--light mb-1.5">
                 {mode === "group" ? "Новая группа" : "Новый диалог"}
               </p>
-              <h2 className="m-0 font-display text-[22px] leading-tight font-semibold tracking-[-0.03em] text-white">
+              <h2 className="m-0 font-display text-title leading-tight font-semibold tracking-[-0.03em] text-white">
                 {mode === "group" ? "Чат по направлению" : "Личный диалог"}
               </h2>
             </div>
@@ -106,25 +106,25 @@ export function NewChatDialog({
           {mode === "group" && (
             <div className="mb-5 grid gap-3">
               <label className="flex flex-col gap-1.5">
-                <span className="text-[12px] font-semibold tracking-[0.06em] text-ink-faint uppercase">
+                <span className="text-caption font-semibold tracking-[0.06em] text-ink-faint uppercase">
                   Название группы
                 </span>
                 <input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   placeholder="Например: Трек «Работа с молодёжью»"
-                  className="min-h-11 w-full rounded-[14px] border border-[var(--line)] bg-white px-4 text-[14px] outline-none focus:border-navy"
+                  className="min-h-11 w-full rounded-field border border-[var(--line)] bg-white px-4 text-ui outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy focus:border-navy"
                 />
               </label>
               <label className="flex flex-col gap-1.5">
-                <span className="text-[12px] font-semibold tracking-[0.06em] text-ink-faint uppercase">
+                <span className="text-caption font-semibold tracking-[0.06em] text-ink-faint uppercase">
                   О чём группа
                 </span>
                 <input
                   value={topic}
                   onChange={(event) => setTopic(event.target.value)}
                   placeholder="Коротко: для чего собрались"
-                  className="min-h-11 w-full rounded-[14px] border border-[var(--line)] bg-white px-4 text-[14px] outline-none focus:border-navy"
+                  className="min-h-11 w-full rounded-field border border-[var(--line)] bg-white px-4 text-ui outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy focus:border-navy"
                 />
               </label>
             </div>
@@ -137,11 +137,11 @@ export function NewChatDialog({
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Имя, должность, город"
               aria-label="Поиск участников"
-              className="min-h-11 w-full bg-transparent text-[14px] outline-none"
+              className="min-h-11 w-full bg-transparent text-ui outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
             />
           </label>
 
-          <div className="max-h-[300px] overflow-auto rounded-[16px] border border-[var(--line)]">
+          <div className="max-h-75 overflow-auto rounded-2xl border border-[var(--line)]">
             {candidates.map((member) => {
               const active = selected.includes(member.id);
               return (
@@ -154,10 +154,10 @@ export function NewChatDialog({
                   <Avatar member={member} size={38} />
                   <span className="min-w-0 flex-1">
                     <span className="mb-0.5 flex flex-wrap items-center gap-2">
-                      <span className="text-[14px] font-medium text-ink">{member.name}</span>
+                      <span className="text-ui font-medium text-ink">{member.name}</span>
                       <RoleBadge role={member.role} />
                     </span>
-                    <span className="block text-[12px] text-ink-faint">
+                    <span className="block text-caption text-ink-faint">
                       {[member.position, member.city].filter(Boolean).join(" · ")}
                     </span>
                   </span>
@@ -180,7 +180,7 @@ export function NewChatDialog({
             })}
 
             {candidates.length === 0 && (
-              <p className="m-0 px-4 py-6 text-center text-[13px] text-ink-faint">
+              <p className="m-0 px-4 py-6 text-center text-meta text-ink-faint">
                 Никого не нашли — попробуйте другой запрос.
               </p>
             )}
@@ -188,7 +188,7 @@ export function NewChatDialog({
 
           {mode === "group" && (
             <div className="mt-5 flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-2 text-[12px] text-ink-faint">
+              <span className="inline-flex items-center gap-2 text-caption text-ink-faint">
                 <Users size={14} />
                 Выбрано: {selected.length}
               </span>
@@ -196,7 +196,7 @@ export function NewChatDialog({
                 type="button"
                 disabled={!canCreate}
                 onClick={() => onCreateGroup({ title, topic, memberIds: selected })}
-                className="ml-auto inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-navy px-5 text-[14px] font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep disabled:cursor-not-allowed disabled:opacity-40"
+                className="ml-auto inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-navy px-5 text-ui font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Создать группу
               </button>

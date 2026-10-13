@@ -1,3 +1,4 @@
+import { uuid } from "./uid";
 import type { Comment, Member, Post, ReactionSummary } from "./types";
 
 /** Имена для подсветки упоминаний в текстах канала. */
@@ -101,7 +102,7 @@ export function createPost(input: {
   createdAt: string;
 }): Post {
   return {
-    id: `post-${input.createdAt}-${Math.round(performance.now())}`,
+    id: `post-${uuid()}`,
     programSlug: input.programSlug,
     authorId: input.authorId,
     title: input.title,
@@ -120,7 +121,7 @@ export function createComment(input: {
   createdAt: string;
 }): Comment {
   return {
-    id: `comment-${input.createdAt}-${Math.round(performance.now())}`,
+    id: `comment-${uuid()}`,
     authorId: input.authorId,
     body: input.body,
     createdAt: input.createdAt,

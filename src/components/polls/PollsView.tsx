@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   ChevronLeft,
@@ -17,23 +17,18 @@ import { Leaderboard, QuestionResults } from "./QuestionResults";
 import {
   activeQuestion,
   addResponse,
-  addResponses,
   createResponse,
-  createSession,
   finishSession,
   nextQuestion,
   previousQuestion,
   responsesFor,
   setAccepting,
   setShowResults,
-  simulateResponses,
   startSession,
 } from "@/lib/poll-actions";
-import { buildPollCsv, downloadText, exportQuestionPng } from "@/lib/export";
 import { localIsoNow } from "@/lib/dates";
 import { submitPollResponseAction, createPollAction, updatePollSessionAction } from "@/app/programs/[slug]/hub/actions";
-import { SIMULATED_PHRASES } from "@/lib/phrases";
-import type { AnswerValue, Member, Poll, PollData, PollSession } from "@/lib/types";
+import type { AnswerValue, Member, Poll, PollData, PollResponse, PollSession } from "@/lib/types";
 import { QUESTION_KIND_LABELS } from "@/lib/types";
 
 interface PollsViewProps {
@@ -45,8 +40,7 @@ interface PollsViewProps {
   currentUser: Member;
   canManage: boolean;
   accent: string;
-  /** Запись в базу доступна вошедшему участнику */
-  persist?: boolean;
+  accentInk: string;
 }
 
 const SESSION_LABELS: Record<PollSession["status"], string> = {
@@ -64,10 +58,12 @@ export function PollsView({
   currentUser,
   canManage,
   accent,
-  persist = false,
+  accentInk,
 }: PollsViewProps) {
   const [polls, setPolls] = useState<Poll[]>(data.polls);
   const [sessions, setSessions] = useState<PollSession[]>(data.sessions);
+  /** Свои ответы, которые ещё не подтвердила база: не теряем их при обновлении данных */
+  const pendingAnswers = useRef(new Map<string, { sessionId: string; response: PollResponse }>());
   const [view, setView] = useState<"list" | "session" | "builder">("list");
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
@@ -112,7 +108,7 @@ export function PollsView({
         session.id === activeSessionId ? setAccepting(session, false) : session,
       ),
     );
-    if (persist && activeSession) {
+    if (canManage && activeSession) {
       void updatePollSessionAction({
         programSlug,
         sessionId: activeSession.id,
@@ -133,87 +129,49 @@ export function PollsView({
     setSessions((previous) =>
       previous.map((session) => (session.id === next.id ? next : session)),
     );
-    if (persist) {
-      void updatePollSessionAction({
-        programSlug,
-        sessionId: next.id,
-        status: next.status,
-        currentIndex: next.currentIndex,
-        accepting: next.accepting,
-        showResults: next.showResults,
-      }).then((result) => {
-        if (!result.ok) setPollError(result.error);
-      });
-    }
+    void updatePollSessionAction({
+      programSlug,
+      sessionId: next.id,
+      status: next.status,
+      currentIndex: next.currentIndex,
+      accepting: next.accepting,
+      showResults: next.showResults,
+    }).then((result) => {
+      if (!result.ok) setPollError(result.error);
+    });
   };
 
   /**
-   * Живое состояние сессии.
-   *
-   * Пока используется короткий опрос сервера: ведущий меняет состояние,
-   * участники узнают об этом за пару секунд, без перезагрузки страницы.
-   * Интерфейс не зависит от транспорта — Socket.IO заменит опрос внутри.
+   * Сервер — источник истины. Живые события обновляют данные хаба,
+   * сюда они приходят пропсом; неподтверждённые свои ответы сохраняем.
    */
   useEffect(() => {
-    if (!persist || view !== "session" || !activeSessionId) return;
+    setPolls(data.polls);
+    setSessions(
+      data.sessions.map((session) => {
+        const pending = [...pendingAnswers.current.values()]
+          .filter(
+            (item) =>
+              item.sessionId === session.id &&
+              !session.responses.some(
+                (stored) => stored.mine && stored.questionId === item.response.questionId,
+              ),
+          )
+          .map((item) => item.response);
+        return pending.length ? { ...session, responses: [...session.responses, ...pending] } : session;
+      }),
+    );
+  }, [data]);
 
-    let cancelled = false;
-
-    const poll = async () => {
-      try {
-        const response = await fetch(
-          `/api/poll-state?program=${encodeURIComponent(programSlug)}&session=${encodeURIComponent(activeSessionId)}`,
-          { cache: "no-store" },
-        );
-        const data = (await response.json()) as {
-          ok: boolean;
-          status?: PollSession["status"];
-          currentIndex?: number;
-          accepting?: boolean;
-          showResults?: boolean;
-        };
-        if (cancelled || !data.ok) return;
-
-        setSessions((previous) =>
-          previous.map((session) =>
-            session.id === activeSessionId
-              ? {
-                  ...session,
-                  status: data.status ?? session.status,
-                  currentIndex: data.currentIndex ?? session.currentIndex,
-                  accepting: data.accepting ?? session.accepting,
-                  showResults: data.showResults ?? session.showResults,
-                }
-              : session,
-          ),
-        );
-      } catch {
-        // сеть недоступна — повторим на следующем тике
-      }
-    };
-
-    void poll();
-    // Резервная сверка: если поток событий недоступен, состояние всё равно обновится
-    const timer = setInterval(poll, 15000);
-
-    // Основной канал — поток событий с сервера: обновляемся сразу, как только
-    // ведущий что-то изменил, без ожидания следующего тика
-    const source = new EventSource(`/api/events?program=${encodeURIComponent(programSlug)}`);
-    source.onmessage = (message) => {
-      try {
-        const event = JSON.parse(message.data) as { type?: string };
-        if (event.type && event.type !== "ready") void poll();
-      } catch {
-        // некорректное сообщение пропускаем
-      }
-    };
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-      source.close();
-    };
-  }, [persist, view, activeSessionId, programSlug]);
+  /** Участник сразу видит вопрос, который ведущий только что запустил. */
+  const autoOpened = useRef<string | null>(null);
+  const liveSessionId = sessions.find((session) => session.status === "live")?.id ?? null;
+  useEffect(() => {
+    if (canManage || !liveSessionId || autoOpened.current === liveSessionId) return;
+    autoOpened.current = liveSessionId;
+    setActiveSessionId(liveSessionId);
+    setView("session");
+  }, [canManage, liveSessionId]);
 
   const updateSession = (updater: (session: PollSession) => PollSession) => {
     if (!activeSession) return;
@@ -222,77 +180,67 @@ export function PollsView({
 
   const openSession = (poll: Poll) => {
     const existing = sessions.find((session) => session.pollId === poll.id);
-    if (existing) {
-      setActiveSessionId(existing.id);
-    } else {
-      const created = createSession(poll);
-      setSessions((previous) => [...previous, created]);
-      setActiveSessionId(created.id);
-    }
+    if (!existing) return;
+    setActiveSessionId(existing.id);
     setView("session");
   };
 
   const submitAnswer = (value: AnswerValue) => {
     if (!activePoll || !activeSession || !question) return;
-    updateSession((session) =>
-      addResponse(
-        session,
-        createResponse({
-          questionId: question.id,
-          memberId: activePoll.anonymous ? undefined : currentUser.id,
-          value,
-          createdAt: localIsoNow(),
-        }),
-      ),
-    );
-
-    if (persist) {
-      void submitPollResponseAction({
-        programSlug,
-        sessionId: activeSession.id,
-        questionId: question.id,
-        anonymous: activePoll.anonymous,
-        value,
-      }).then((result) => {
-        if (!result.ok) setPollError(result.error);
-      });
-    }
-  };
-
-  const simulate = (count: number) => {
-    if (!activePoll || !activeSession || !question) return;
-    const answered = responsesFor(activeSession, question.id)
-      .map((response) => response.memberId)
-      .filter((memberId): memberId is string => Boolean(memberId));
-
-    const generated = simulateResponses({
-      question,
-      members,
-      count,
-      phrases: SIMULATED_PHRASES,
+    const response = createResponse({
+      questionId: question.id,
+      memberId: activePoll.anonymous ? undefined : currentUser.id,
+      value,
       createdAt: localIsoNow(),
-      anonymous: activePoll.anonymous,
-      exclude: answered,
     });
-    updateSession((session) => addResponses(session, generated));
+    const sessionId = activeSession.id;
+    pendingAnswers.current.set(response.id, { sessionId, response });
+    // Ответ виден сразу; состояние сессии на сервер при этом не отправляется
+    setSessions((previous) =>
+      previous.map((session) => (session.id === sessionId ? addResponse(session, response) : session)),
+    );
+    setPollError(null);
+
+    void submitPollResponseAction({
+      programSlug,
+      sessionId,
+      questionId: question.id,
+      value,
+    }).then((result) => {
+      pendingAnswers.current.delete(response.id);
+      if (!result.ok) {
+        setPollError(result.error);
+        setSessions((previous) =>
+          previous.map((session) =>
+            session.id === sessionId
+              ? { ...session, responses: session.responses.filter((item) => item.id !== response.id) }
+              : session,
+          ),
+        );
+      }
+    });
   };
 
-  const exportCsv = () => {
+  // Модуль выгрузки (canvas, CSV) нужен редко — загружается по клику, а не со страницей
+  const exportCsv = async () => {
     if (!activePoll || !activeSession) return;
+    const { buildPollCsv, downloadText } = await import("@/lib/export");
     downloadText(
       `${programSlug}-${activePoll.id}-results.csv`,
       buildPollCsv({ poll: activePoll, session: activeSession, members, programTitle }),
     );
   };
 
-  const exportPng = () => {
+  const exportPng = async () => {
     if (!activePoll || !activeSession || !question) return;
+    const { exportQuestionPng } = await import("@/lib/export");
     void exportQuestionPng({
       poll: activePoll,
       question,
       session: activeSession,
       members,
       accent,
+      accentInk,
       fileName: `${programSlug}-${activePoll.id}-q${activeSession.currentIndex + 1}.png`,
     });
   };
@@ -306,14 +254,6 @@ export function PollsView({
         createdAt={localIsoNow()}
         onCancel={() => setView("list")}
         onSave={(poll) => {
-          if (!persist) {
-            const created = createSession(poll);
-            setPolls((previous) => [poll, ...previous]);
-            setSessions((previous) => [created, ...previous]);
-            setActiveSessionId(created.id);
-            setView("list");
-            return;
-          }
 
           void createPollAction({
             programSlug,
@@ -379,16 +319,16 @@ export function PollsView({
           <button
             type="button"
             onClick={() => setView("list")}
-            className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3.5 text-[12px] font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
+            className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3.5 text-caption font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
           >
             <ChevronLeft size={14} />
             К списку опросов
           </button>
-          <span className="rounded-full bg-[var(--color-sky-tint)] px-3 py-1.5 text-[12px] font-semibold text-sky-ink">
+          <span className="rounded-full bg-[var(--color-sky-tint)] px-3 py-1.5 text-caption font-semibold text-sky-ink">
             {SESSION_LABELS[activeSession.status]}
           </span>
           {activePoll.anonymous && <span className="tag">анонимный</span>}
-          <span className="text-[12px] text-ink-faint">
+          <span className="text-caption text-ink-faint">
             Ответов на текущий вопрос: {responses}
           </span>
         </div>
@@ -419,7 +359,6 @@ export function PollsView({
               onNext={() => updateSession((session) => nextQuestion(session, activePoll))}
               onPrevious={() => updateSession((session) => previousQuestion(session))}
               onFinish={() => updateSession((session) => finishSession(session, localIsoNow()))}
-              onSimulate={simulate}
               onExportCsv={exportCsv}
               onExportPng={exportPng}
             />
@@ -440,7 +379,7 @@ export function PollsView({
                       anonymous={activePoll.anonymous}
                     />
                   ) : (
-                    <p className="m-0 text-[13px] text-ink-faint">
+                    <p className="m-0 text-meta text-ink-faint">
                       Результаты появятся на экране, когда ведущий их откроет.
                     </p>
                   )}
@@ -463,14 +402,14 @@ export function PollsView({
                 onSubmit={submitAnswer}
               />
             ) : (
-              <p className="m-0 text-[13px] text-ink-faint">В опросе нет вопросов.</p>
+              <p className="m-0 text-meta text-ink-faint">В опросе нет вопросов.</p>
             )}
 
-            <p className="m-0 rounded-[16px] border border-[var(--line)] bg-white px-4 py-3 text-[12px] leading-relaxed text-ink-faint">
+            <p className="m-0 rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-caption leading-relaxed text-ink-faint">
               {pollError
                 ? `Не удалось сохранить ответ: ${pollError}`
                 : canManage
-                  ? "Демонстрационный режим: ответ из правой колонки сразу попадает в результаты на экране ведущего. Ответы остальных участников добавляются кнопкой «Сымитировать ответы» — на волне 5 их заменит настоящий реалтайм."
+                  ? "Ответы участников появляются на экране в реальном времени. Справа — экран участника: можно ответить и самому."
                   : "Ваш ответ отправляется ведущему и появляется на экране в зале."}
             </p>
           </div>
@@ -484,12 +423,12 @@ export function PollsView({
     <div className="flex flex-col gap-4">
       <section className="card p-7">
         <div className="flex flex-wrap items-start justify-between gap-5">
-          <div className="max-w-[620px]">
+          <div className="max-w-155">
             <p className="eyebrow mb-2">Опросы и квизы</p>
             <h2 className="m-0 mb-3 font-display text-[clamp(24px,3vw,34px)] leading-tight font-semibold tracking-[-0.035em] text-navy">
               Живая обратная связь на программе
             </h2>
-            <p className="m-0 text-[14px] leading-relaxed text-ink-soft">
+            <p className="m-0 text-ui leading-relaxed text-ink-soft">
               Ведущий запускает вопрос — участники отвечают с телефона по коду. Результаты
               появляются на экране в зале: столбцы, облако слов, шкалы или лидерборд квиза.
               Всё выгружается в таблицу и картинку.
@@ -500,7 +439,7 @@ export function PollsView({
             <button
               type="button"
               onClick={() => setView("builder")}
-              className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-navy px-5 text-[14px] font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep"
+              className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-navy px-5 text-ui font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep"
             >
               <Plus size={15} />
               Создать опрос
@@ -509,13 +448,13 @@ export function PollsView({
         </div>
 
         <div className="mt-6 flex flex-wrap gap-2.5">
-          <span className="rounded-full bg-[var(--color-sky-tint)] px-3.5 py-1.5 text-[12px] font-semibold text-sky-ink">
+          <span className="rounded-full bg-[var(--color-sky-tint)] px-3.5 py-1.5 text-caption font-semibold text-sky-ink">
             {polls.length} {polls.length === 1 ? "опрос" : polls.length < 5 ? "опроса" : "опросов"}
           </span>
-          <span className="rounded-full bg-[var(--color-sky-tint)] px-3.5 py-1.5 text-[12px] font-semibold text-sky-ink">
+          <span className="rounded-full bg-[var(--color-sky-tint)] px-3.5 py-1.5 text-caption font-semibold text-sky-ink">
             {data.templates.length} шаблонов в библиотеке
           </span>
-          <span className="rounded-full bg-[var(--color-sky-tint)] px-3.5 py-1.5 text-[12px] font-semibold text-sky-ink">
+          <span className="rounded-full bg-[var(--color-sky-tint)] px-3.5 py-1.5 text-caption font-semibold text-sky-ink">
             участников в программе: {participantCount}
           </span>
         </div>
@@ -533,12 +472,12 @@ export function PollsView({
                 {session && (
                   <span
                     className={[
-                      "rounded-full px-3 py-1 text-[11px] font-semibold",
+                      "rounded-full px-3 py-1 text-micro font-semibold",
                       session.status === "live"
-                        ? "text-white"
+                        ? "text-on-accent"
                         : session.status === "finished"
-                          ? "bg-[rgba(220,222,221,0.6)] text-ink-soft"
-                          : "bg-[rgba(34,63,154,0.08)] text-navy",
+                          ? "bg-grey-brand/60 text-ink-soft"
+                          : "bg-navy/8 text-navy",
                     ].join(" ")}
                     style={session.status === "live" ? { background: "var(--accent)" } : undefined}
                   >
@@ -548,7 +487,7 @@ export function PollsView({
                 {poll.anonymous && <span className="tag">анонимный</span>}
                 {poll.source === "template" && <span className="tag">из шаблона</span>}
                 {session && (
-                  <span className="ml-auto text-[12px] text-ink-faint">код {session.code}</span>
+                  <span className="ml-auto text-caption text-ink-faint">код {session.code}</span>
                 )}
               </div>
 
@@ -556,12 +495,12 @@ export function PollsView({
                 {poll.title}
               </h3>
               {poll.description && (
-                <p className="m-0 mb-4 text-[13px] leading-relaxed text-ink-soft">
+                <p className="m-0 mb-4 text-meta leading-relaxed text-ink-soft">
                   {poll.description}
                 </p>
               )}
 
-              <dl className="m-0 mb-5 grid grid-cols-3 gap-3 border-t border-[var(--line)] pt-4 text-[12px]">
+              <dl className="m-0 mb-5 grid grid-cols-3 gap-3 border-t border-[var(--line)] pt-4 text-caption">
                 <div>
                   <dt className="text-ink-faint">Вопросы</dt>
                   <dd className="m-0 font-semibold text-ink">{poll.questions.length}</dd>
@@ -588,7 +527,7 @@ export function PollsView({
                 <button
                   type="button"
                   onClick={() => openSession(poll)}
-                  className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full bg-navy px-4 text-[13px] font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep"
+                  className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full bg-navy px-4 text-meta font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep"
                 >
                   {session?.status === "live" ? <Play size={14} /> : <BarChart3 size={14} />}
                   {canManage ? (session?.status === "live" ? "Открыть сессию" : "Запустить") : "Ответить"}
@@ -598,7 +537,8 @@ export function PollsView({
                   <>
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={async () => {
+                        const { buildPollCsv, downloadText } = await import("@/lib/export");
                         downloadText(
                           `${programSlug}-${poll.id}-results.csv`,
                           buildPollCsv({
@@ -607,9 +547,9 @@ export function PollsView({
                             members,
                             programTitle,
                           }),
-                        )
-                      }
-                      className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 text-[13px] font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
+                        );
+                      }}
+                      className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 text-meta font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
                     >
                       <FileSpreadsheet size={14} />
                       Таблица
@@ -618,7 +558,7 @@ export function PollsView({
                       type="button"
                       disabled
                       title="Выгрузка картинки доступна на экране ведущего"
-                      className="inline-flex min-h-10 cursor-not-allowed items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 text-[13px] font-semibold text-navy opacity-45"
+                      className="inline-flex min-h-10 cursor-not-allowed items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 text-meta font-semibold text-navy opacity-45"
                     >
                       <ImageIcon size={14} />
                       Картинка
@@ -633,12 +573,11 @@ export function PollsView({
 
       <section className="card flex flex-wrap items-center gap-5 p-6">
         <span
-          className="grid size-11 shrink-0 place-items-center rounded-full"
-          style={{ background: "rgba(34,63,154,0.08)", color: "#223F9A" }}
+          className="grid size-11 shrink-0 place-items-center rounded-full bg-navy/8 text-navy"
         >
           <Users size={18} />
         </span>
-        <p className="m-0 max-w-[720px] text-[13px] leading-relaxed text-ink-soft">
+        <p className="m-0 max-w-180 text-meta leading-relaxed text-ink-soft">
           <b className="text-ink">Как это работает в зале.</b> Ведущий открывает опрос, называет
           код с экрана — участники вводят его на телефоне и отвечают. Приём ответов можно закрыть
           в любой момент, результаты показать или скрыть, а после программы выгрузить таблицу для
@@ -648,7 +587,7 @@ export function PollsView({
           <button
             type="button"
             onClick={() => setView("builder")}
-            className="ml-auto inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 text-[13px] font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
+            className="ml-auto inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 text-meta font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
           >
             <Plus size={14} />
             Собрать из шаблона

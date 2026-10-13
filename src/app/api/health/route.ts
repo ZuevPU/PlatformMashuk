@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { getDb, hasDatabase } from "@/lib/db/client";
+import { blobStore } from "@/lib/blob-store";
 
 /**
  * Проверка живости приложения.
@@ -32,6 +33,7 @@ export async function GET() {
     {
       ok: healthy,
       database,
+      storage: storageDriver(),
       uptimeSeconds: Math.round(process.uptime()),
       checkedInMs: Date.now() - startedAt,
       version: process.env.APP_VERSION ?? null,
@@ -39,4 +41,13 @@ export async function GET() {
     },
     { status: healthy ? 200 : 503 },
   );
+}
+
+/** Какое хранилище файлов выбрано: ошибка конфигурации S3 видна сразу, а не при первой загрузке. */
+function storageDriver(): string {
+  try {
+    return blobStore().driver;
+  } catch (error) {
+    return error instanceof Error ? `ошибка: ${error.message}` : "ошибка";
+  }
 }

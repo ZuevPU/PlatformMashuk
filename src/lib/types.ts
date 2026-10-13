@@ -83,6 +83,8 @@ export interface Program {
   driveFolder?: string;
   /** Программа ведётся в демонстрационном режиме (мок-данные) */
   demo?: boolean;
+  /** Загружена авторская сборка программы (HTML) — открывается внутри хаба */
+  hasBuild?: boolean;
 }
 
 export interface Direction {
@@ -248,6 +250,8 @@ export interface PollResponse {
   questionId: string;
   /** Пусто, если опрос анонимный */
   memberId?: string;
+  /** Ответ текущего пользователя — известно и в анонимном опросе */
+  mine?: boolean;
   value: AnswerValue;
   createdAt: string;
 }

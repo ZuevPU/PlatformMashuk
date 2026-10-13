@@ -1,14 +1,12 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import path from "node:path";
+import { blobStore } from "./blob-store";
 
 /**
- * Хранилище файлов.
+ * Фотографии из канала и чатов.
  *
- * Драйвер выбирается переменными окружения: пока их нет, файлы кладутся
- * в public/uploads и раздаются самим приложением. Для боевого сервера
- * достаточно задать S3_* — интерфейс saveUpload остаётся тем же,
- * менять вызовы в приложении не придётся.
+ * Файл кладётся в хранилище (локальный каталог или S3 — см. blob-store.ts)
+ * под ключом uploads/ГГГГ-ММ/<uuid>.<расширение> и отдаётся по адресу
+ * /uploads/ГГГГ-ММ/… только вошедшим участникам.
  */
 
 export interface SavedFile {
@@ -18,56 +16,51 @@ export interface SavedFile {
 }
 
 const MAX_BYTES = 8 * 1024 * 1024; // 8 МБ — с запасом для фото с телефона
-const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic"];
 
-export function uploadsEnabled(): boolean {
-  return true;
-}
+const EXTENSIONS: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+  "image/heic": ".heic",
+};
 
-export function storageDriver(): "s3" | "local" {
-  return process.env.S3_BUCKET && process.env.S3_ENDPOINT ? "s3" : "local";
+/** Сигнатуры форматов: тип файла проверяется по содержимому, а не по заявленному браузером. */
+function sniff(bytes: Uint8Array): string | null {
+  const head = (length: number) => Array.from(bytes.slice(0, length));
+  const ascii = (from: number, to: number) => String.fromCharCode(...bytes.slice(from, to));
+  if (head(3).join() === "255,216,255") return "image/jpeg";
+  if (head(8).join() === "137,80,78,71,13,10,26,10") return "image/png";
+  if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") return "image/webp";
+  if (ascii(0, 4) === "GIF8") return "image/gif";
+  if (ascii(4, 8) === "ftyp" && /^(heic|heix|mif1|msf1)$/.test(ascii(8, 12))) return "image/heic";
+  return null;
 }
 
 export function validateImage(file: { type: string; size: number }): string | null {
-  if (!ALLOWED.includes(file.type)) return "Поддерживаются только изображения";
+  if (!EXTENSIONS[file.type]) return "Поддерживаются только изображения";
   if (file.size > MAX_BYTES) return "Файл больше 8 МБ";
   return null;
 }
 
-export async function saveUpload(file: {
-  name: string;
-  type: string;
-  bytes: Uint8Array;
-}): Promise<SavedFile> {
-  const extension = extensionFor(file.type, file.name);
+export async function saveUpload(file: { name: string; type: string; bytes: Uint8Array }): Promise<SavedFile> {
+  // Заявленный тип должен совпасть с содержимым: под видом картинки не загрузить HTML или скрипт
+  const actual = sniff(file.bytes);
+  if (!actual) throw new UploadError("Файл не похож на изображение");
+
   const now = new Date();
   const folder = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-  const fileName = `${randomUUID()}${extension}`;
+  const name = `${randomUUID()}${EXTENSIONS[actual]}`;
 
-  if (storageDriver() === "s3") {
-    // Драйвер S3 подключается на этапе деплоя: интерфейс уже готов,
-    // нужен только клиент хранилища и ключи доступа.
-    throw new Error("Драйвер S3 не подключён: задайте ключи хранилища");
-  }
+  await blobStore().put(`uploads/${folder}/${name}`, file.bytes, actual);
 
-  const directory = path.join(process.cwd(), "public", "uploads", folder);
-  await mkdir(directory, { recursive: true });
-  await writeFile(path.join(directory, fileName), file.bytes);
-
-  return {
-    url: `/uploads/${folder}/${fileName}`,
-    size: file.bytes.byteLength,
-    contentType: file.type,
-  };
+  return { url: `/uploads/${folder}/${name}`, size: file.bytes.byteLength, contentType: actual };
 }
 
-function extensionFor(contentType: string, name: string): string {
-  if (contentType === "image/png") return ".png";
-  if (contentType === "image/webp") return ".webp";
-  if (contentType === "image/gif") return ".gif";
-  if (contentType === "image/heic") return ".heic";
-  if (contentType === "image/jpeg") return ".jpg";
-
-  const fromName = name.includes(".") ? name.slice(name.lastIndexOf(".")) : "";
-  return /^\.[a-z0-9]{2,5}$/i.test(fromName) ? fromName.toLowerCase() : ".bin";
+export async function readUpload(folder: string, name: string) {
+  if (!/^\d{4}-\d{2}$/.test(folder) || !/^[\w-]+\.[a-z0-9]{2,5}$/i.test(name)) return null;
+  return blobStore().get(`uploads/${folder}/${name}`);
 }
+
+/** Ошибка, которую можно показать пользователю как есть. */
+export class UploadError extends Error {}

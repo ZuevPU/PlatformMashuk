@@ -62,6 +62,10 @@ export const programs = pgTable(
     landingCode: text("landing_code"),
     driveFolder: text("drive_folder"),
     isDemo: boolean("is_demo").notNull().default(false),
+    /** Пароль программы (scrypt-хеш): по нему новый участник попадает в программу */
+    accessPasswordHash: text("access_password_hash"),
+    /** Когда загружена авторская сборка программы (HTML); null — сборки нет */
+    buildUploadedAt: timestamp("build_uploaded_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("programs_start_date_idx").on(table.startDate)],
@@ -108,6 +112,10 @@ export const programMaterials = pgTable("program_materials", {
   links: jsonb("links").$type<{ label: string; url: string }[]>().notNull().default([]),
 });
 
+/**
+ * Человек на платформе. Роль admin — администратор Центра: видит все программы
+ * и управляет ими. Роль в конкретной программе — в program_members.
+ */
 export const members = pgTable("members", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -115,6 +123,11 @@ export const members = pgTable("members", {
   position: text("position"),
   org: text("org"),
   city: text("city"),
+  /** Почта или телефон в нормализованном виде — это логин */
+  contact: text("contact").unique(),
+  /** Личный пароль (scrypt-хеш); null — человек ещё не входил */
+  passwordHash: text("password_hash"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const programMembers = pgTable(
@@ -128,7 +141,10 @@ export const programMembers = pgTable(
       .references(() => members.id, { onDelete: "cascade" }),
     role: text("role").$type<MemberRole>().notNull(),
   },
-  (table) => [primaryKey({ columns: [table.programId, table.memberId] })],
+  (table) => [
+    primaryKey({ columns: [table.programId, table.memberId] }),
+    index("program_members_member_idx").on(table.memberId),
+  ],
 );
 
 /* --- Реакции: одна строка = один участник и один эмодзи ---------------- */
@@ -229,19 +245,23 @@ export const pollQuestions = pgTable(
   (table) => [index("poll_questions_poll_idx").on(table.pollId, table.position)],
 );
 
-export const pollSessions = pgTable("poll_sessions", {
-  id: text("id").primaryKey(),
-  pollId: text("poll_id")
-    .notNull()
-    .references(() => polls.id, { onDelete: "cascade" }),
-  code: text("code").notNull(),
-  status: text("status").$type<SessionStatus>().notNull().default("draft"),
-  currentIndex: integer("current_index").notNull().default(0),
-  accepting: boolean("accepting").notNull().default(false),
-  showResults: boolean("show_results").notNull().default(false),
-  startedAt: timestamp("started_at", { withTimezone: true }),
-  finishedAt: timestamp("finished_at", { withTimezone: true }),
-});
+export const pollSessions = pgTable(
+  "poll_sessions",
+  {
+    id: text("id").primaryKey(),
+    pollId: text("poll_id")
+      .notNull()
+      .references(() => polls.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    status: text("status").$type<SessionStatus>().notNull().default("draft"),
+    currentIndex: integer("current_index").notNull().default(0),
+    accepting: boolean("accepting").notNull().default(false),
+    showResults: boolean("show_results").notNull().default(false),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (table) => [index("poll_sessions_poll_idx").on(table.pollId)],
+);
 
 export const pollResponses = pgTable(
   "poll_responses",
@@ -254,30 +274,48 @@ export const pollResponses = pgTable(
       .notNull()
       .references(() => pollQuestions.id, { onDelete: "cascade" }),
     memberId: text("member_id").references(() => members.id, { onDelete: "set null" }),
+    /**
+     * Обезличенный ключ отвечающего: HMAC от участника и сессии. Не даёт ответить
+     * на вопрос дважды и при этом не раскрывает, кто ответил в анонимном опросе.
+     */
+    respondentKey: text("respondent_key"),
     optionIds: jsonb("option_ids").$type<string[]>().notNull().default([]),
     text: text("text"),
     scale: integer("scale"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
-  (table) => [index("poll_responses_session_idx").on(table.sessionId, table.questionId)],
+  (table) => [
+    index("poll_responses_session_idx").on(table.sessionId, table.questionId),
+    unique("poll_responses_respondent_key").on(
+      table.sessionId,
+      table.questionId,
+      table.respondentKey,
+    ),
+  ],
 );
 
 /* --- Чаты --------------------------------------------------------------- */
 
-export const conversations = pgTable("conversations", {
-  id: text("id").primaryKey(),
-  programId: integer("program_id")
-    .notNull()
-    .references(() => programs.id, { onDelete: "cascade" }),
-  kind: text("kind").$type<ConversationKind>().notNull(),
-  title: text("title"),
-  topic: text("topic"),
-  emoji: text("emoji"),
-  createdBy: text("created_by")
-    .notNull()
-    .references(() => members.id),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-});
+export const conversations = pgTable(
+  "conversations",
+  {
+    id: text("id").primaryKey(),
+    programId: integer("program_id")
+      .notNull()
+      .references(() => programs.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<ConversationKind>().notNull(),
+    title: text("title"),
+    topic: text("topic"),
+    emoji: text("emoji"),
+    /** Общий чат: каждый, кто входит в программу, становится участником автоматически */
+    autoJoin: boolean("auto_join").notNull().default(false),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => members.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [index("conversations_program_idx").on(table.programId)],
+);
 
 export const conversationMembers = pgTable(
   "conversation_members",
@@ -289,7 +327,10 @@ export const conversationMembers = pgTable(
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
   },
-  (table) => [primaryKey({ columns: [table.conversationId, table.memberId] })],
+  (table) => [
+    primaryKey({ columns: [table.conversationId, table.memberId] }),
+    index("conversation_members_member_idx").on(table.memberId),
+  ],
 );
 
 export const messages = pgTable(
@@ -328,36 +369,19 @@ export const chatReadState = pgTable(
 export type ReactionRow = ReactionSummary;
 
 /* ==========================================================================
-   Вход по приглашению
+   Вход: личный пароль участника или пароль программы
    ========================================================================== */
 
 /**
- * Приглашение участника.
- *
- * Приглашение принадлежит человеку, а не программе: один слушатель может
- * приехать на несколько программ, и вход у него один. Поле program_id —
- * только подсказка, куда вести после входа.
+ * Счётчик попыток входа: защита от перебора паролей.
+ * Ключ — назначение и источник, например «login:ip:1.2.3.4» или «login:contact:…».
  */
-export const invites = pgTable(
-  "invites",
-  {
-    token: text("token").primaryKey(),
-    programId: integer("program_id").references(() => programs.id, { onDelete: "set null" }),
-    memberId: text("member_id")
-      .notNull()
-      .references(() => members.id, { onDelete: "cascade" }),
-    channel: text("channel").$type<"link" | "email" | "sms">().notNull().default("link"),
-    /** Почта или телефон: он же логин, поэтому уникален */
-    contact: text("contact").unique(),
-    /** Одноразовый код для входа по почте или SMS */
-    code: text("code"),
-    status: text("status").$type<"pending" | "used" | "revoked">().notNull().default("pending"),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    usedAt: timestamp("used_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [index("invites_member_idx").on(table.memberId)],
-);
+export const loginAttempts = pgTable("login_attempts", {
+  key: text("key").primaryKey(),
+  attempts: integer("attempts").notNull().default(0),
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull().defaultNow(),
+  blockedUntil: timestamp("blocked_until", { withTimezone: true }),
+});
 
 /** Активная сессия: непрозрачный токен в cookie, ничего больше в браузере. */
 export const authSessions = pgTable(

@@ -1,19 +1,35 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
-import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
-import { getDb } from "@/lib/db/client";
-import * as schema from "@/lib/db/schema";
-import { getProgramRole, getSessionUser } from "@/lib/auth";
-import type { Attachment, MemberRole, RichDoc } from "@/lib/types";
+import { randomInt, randomUUID } from "node:crypto";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { getDb, schema } from "@/lib/db/client";
+import { getViewer } from "@/lib/auth";
+import { publish } from "@/lib/events";
+import { respondentKey } from "@/lib/respondent";
+import {
+  cleanAttachments,
+  cleanText,
+  isClientId,
+  isId,
+  isReaction,
+  isRichDoc,
+} from "@/lib/validate";
+import { MAX_GROUP_MEMBERS } from "@/lib/types";
+import type { MemberRole, QuestionKind, QuestionOption, RichDoc } from "@/lib/types";
 
 /**
- * Запись в канал программы.
+ * Запись в хаб программы.
  *
- * Все действия выполняются на сервере: права проверяются по сессии и роли
- * в программе, автор берётся из сессии, а не из запроса. Клиент не может
- * подписаться чужим именем или опубликовать пост без прав.
+ * Серверное действие — публичная точка входа, поэтому каждое проверяет:
+ * сессию и роль в программе, что объект принадлежит этой программе,
+ * и сами данные. Автор всегда берётся из сессии, а не из запроса.
+ *
+ * Идентификаторы новых постов, комментариев, сообщений и бесед создаёт
+ * браузер (префикс + UUID): так оптимистичная запись в интерфейсе и запись
+ * в базе совпадают, и при обновлении данных ничего не задваивается.
+ *
+ * После записи публикуется событие — открытые страницы получают его
+ * потоком и подтягивают изменения.
  */
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -22,158 +38,117 @@ interface Context {
   memberId: string;
   role: MemberRole;
   programId: number;
+  staff: boolean;
 }
 
+const fail = (error: string): { ok: false; error: string } => ({ ok: false, error });
+
 async function requireContext(
-  programSlug: string,
+  programSlug: unknown,
   options: { staff?: boolean } = {},
 ): Promise<{ context: Context } | { error: string }> {
   const db = getDb();
   if (!db) return { error: "База данных не подключена" };
+  if (!isId(programSlug)) return { error: "Программа не найдена" };
 
-  const user = await getSessionUser();
-  if (!user) return { error: "Нужно войти по приглашению" };
+  const viewer = await getViewer(programSlug);
+  if (!viewer) return { error: "Войдите в программу, чтобы продолжить" };
 
-  const role = await getProgramRole(user.member.id, programSlug);
-  if (!role) return { error: "Вы не участник этой программы" };
-  if (options.staff && role === "participant") {
-    return { error: "Публиковать посты может команда программы" };
-  }
+  const staff = viewer.role === "admin" || viewer.role === "moderator";
+  if (options.staff && !staff) return { error: "Это может сделать только команда программы" };
 
   const [program] = await db
     .select({ id: schema.programs.id })
     .from(schema.programs)
     .where(eq(schema.programs.slug, programSlug));
-
   if (!program) return { error: "Программа не найдена" };
 
-  return { context: { memberId: user.member.id, role, programId: program.id } };
+  return {
+    context: { memberId: viewer.user.member.id, role: viewer.role, programId: program.id, staff },
+  };
 }
 
-function refresh(programSlug: string) {
-  revalidatePath(`/programs/${programSlug}/hub`);
-  // Шину событий подключаем лениво: она нужна только в момент записи,
-  // а модуль действий импортируется и при отрисовке страницы.
-  void import("@/lib/events").then(({ publish }) =>
-    publish({ type: "program-changed", programSlug }),
-  );
-}
+/* --- Канал --------------------------------------------------------------- */
 
 export async function createPostAction(input: {
   programSlug: string;
+  id: string;
   title?: string;
   body: RichDoc;
-  attachments: Attachment[];
+  attachments: unknown;
 }): Promise<ActionResult> {
   const db = getDb();
   const result = await requireContext(input.programSlug, { staff: true });
-  if ("error" in result || !db) return { ok: false, error: (result as { error: string }).error };
+  if ("error" in result || !db) return fail((result as { error: string }).error);
 
-  await db.insert(schema.posts).values({
-    id: `post-${randomUUID()}`,
-    programId: result.context.programId,
-    authorId: result.context.memberId,
-    title: input.title ?? null,
-    body: input.body,
-    attachments: input.attachments,
-    pinned: false,
-    createdAt: new Date(),
-  });
+  const attachments = cleanAttachments(input.attachments);
+  if (!isClientId("post", input.id) || !isRichDoc(input.body) || !attachments) {
+    return fail("Не удалось прочитать пост");
+  }
 
-  refresh(input.programSlug);
+  await db
+    .insert(schema.posts)
+    .values({
+      id: input.id,
+      programId: result.context.programId,
+      authorId: result.context.memberId,
+      title: cleanText(input.title, 200) ?? null,
+      body: input.body,
+      attachments,
+      pinned: false,
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing();
+
+  publish({ type: "channel", programSlug: input.programSlug });
   return { ok: true };
 }
 
 export async function addCommentAction(input: {
   programSlug: string;
+  id: string;
   postId: string;
   parentId?: string;
   body: RichDoc;
 }): Promise<ActionResult> {
   const db = getDb();
   const result = await requireContext(input.programSlug);
-  if ("error" in result || !db) return { ok: false, error: (result as { error: string }).error };
+  if ("error" in result || !db) return fail((result as { error: string }).error);
 
-  await db.insert(schema.comments).values({
-    id: `comment-${randomUUID()}`,
-    postId: input.postId,
-    parentId: input.parentId ?? null,
-    authorId: result.context.memberId,
-    body: input.body,
-    createdAt: new Date(),
-  });
-
-  refresh(input.programSlug);
-  return { ok: true };
-}
-
-export async function togglePostReactionAction(input: {
-  programSlug: string;
-  postId: string;
-  emoji: string;
-}): Promise<ActionResult> {
-  const db = getDb();
-  const result = await requireContext(input.programSlug);
-  if ("error" in result || !db) return { ok: false, error: (result as { error: string }).error };
-
-  const { memberId } = result.context;
-  const where = and(
-    eq(schema.reactions.targetType, "post"),
-    eq(schema.reactions.targetId, input.postId),
-    eq(schema.reactions.memberId, memberId),
-    eq(schema.reactions.emoji, input.emoji),
-  );
-
-  const existing = await db.select({ id: schema.reactions.id }).from(schema.reactions).where(where);
-
-  if (existing.length > 0) {
-    await db.delete(schema.reactions).where(where);
-  } else {
-    await db.insert(schema.reactions).values({
-      targetType: "post",
-      targetId: input.postId,
-      memberId,
-      emoji: input.emoji,
-      createdAt: new Date(),
-    });
+  if (!isClientId("comment", input.id) || !isId(input.postId) || !isRichDoc(input.body)) {
+    return fail("Не удалось прочитать комментарий");
   }
 
-  refresh(input.programSlug);
-  return { ok: true };
-}
+  const [post] = await db
+    .select({ id: schema.posts.id })
+    .from(schema.posts)
+    .where(
+      and(eq(schema.posts.id, input.postId), eq(schema.posts.programId, result.context.programId)),
+    );
+  if (!post) return fail("Пост не найден");
 
-export async function toggleCommentReactionAction(input: {
-  programSlug: string;
-  commentId: string;
-  emoji: string;
-}): Promise<ActionResult> {
-  const db = getDb();
-  const result = await requireContext(input.programSlug);
-  if ("error" in result || !db) return { ok: false, error: (result as { error: string }).error };
-
-  const { memberId } = result.context;
-  const where = and(
-    eq(schema.reactions.targetType, "comment"),
-    eq(schema.reactions.targetId, input.commentId),
-    eq(schema.reactions.memberId, memberId),
-    eq(schema.reactions.emoji, input.emoji),
-  );
-
-  const existing = await db.select({ id: schema.reactions.id }).from(schema.reactions).where(where);
-
-  if (existing.length > 0) {
-    await db.delete(schema.reactions).where(where);
-  } else {
-    await db.insert(schema.reactions).values({
-      targetType: "comment",
-      targetId: input.commentId,
-      memberId,
-      emoji: input.emoji,
-      createdAt: new Date(),
-    });
+  if (input.parentId !== undefined) {
+    if (!isId(input.parentId)) return fail("Комментарий не найден");
+    const [parent] = await db
+      .select({ id: schema.comments.id })
+      .from(schema.comments)
+      .where(and(eq(schema.comments.id, input.parentId), eq(schema.comments.postId, post.id)));
+    if (!parent) return fail("Комментарий не найден");
   }
 
-  refresh(input.programSlug);
+  await db
+    .insert(schema.comments)
+    .values({
+      id: input.id,
+      postId: post.id,
+      parentId: input.parentId ?? null,
+      authorId: result.context.memberId,
+      body: input.body,
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing();
+
+  publish({ type: "channel", programSlug: input.programSlug });
   return { ok: true };
 }
 
@@ -184,44 +159,148 @@ export async function togglePinAction(input: {
 }): Promise<ActionResult> {
   const db = getDb();
   const result = await requireContext(input.programSlug, { staff: true });
-  if ("error" in result || !db) return { ok: false, error: (result as { error: string }).error };
+  if ("error" in result || !db) return fail((result as { error: string }).error);
+  if (!isId(input.postId)) return fail("Пост не найден");
 
   await db
     .update(schema.posts)
-    .set({ pinned: input.pinned })
-    .where(eq(schema.posts.id, input.postId));
+    .set({ pinned: Boolean(input.pinned) })
+    .where(
+      and(eq(schema.posts.id, input.postId), eq(schema.posts.programId, result.context.programId)),
+    );
 
-  refresh(input.programSlug);
+  publish({ type: "channel", programSlug: input.programSlug });
+  return { ok: true };
+}
+
+/* --- Реакции ------------------------------------------------------------- */
+
+/** Принадлежит ли объект программе и доступен ли он человеку. Для сообщений — участники беседы. */
+async function reactionTarget(
+  targetType: "post" | "comment" | "message",
+  targetId: string,
+  context: Context,
+): Promise<{ memberIds?: string[]; conversationId?: string } | null> {
+  const db = getDb();
+  if (!db) return null;
+
+  if (targetType === "post") {
+    const [row] = await db
+      .select({ id: schema.posts.id })
+      .from(schema.posts)
+      .where(and(eq(schema.posts.id, targetId), eq(schema.posts.programId, context.programId)));
+    return row ? {} : null;
+  }
+
+  if (targetType === "comment") {
+    const [row] = await db
+      .select({ id: schema.comments.id })
+      .from(schema.comments)
+      .innerJoin(schema.posts, eq(schema.posts.id, schema.comments.postId))
+      .where(and(eq(schema.comments.id, targetId), eq(schema.posts.programId, context.programId)));
+    return row ? {} : null;
+  }
+
+  const [row] = await db
+    .select({ conversationId: schema.messages.conversationId })
+    .from(schema.messages)
+    .innerJoin(schema.conversations, eq(schema.conversations.id, schema.messages.conversationId))
+    .where(
+      and(eq(schema.messages.id, targetId), eq(schema.conversations.programId, context.programId)),
+    );
+  if (!row) return null;
+
+  const memberIds = await conversationMemberIds(row.conversationId);
+  return memberIds.includes(context.memberId)
+    ? { memberIds, conversationId: row.conversationId }
+    : null;
+}
+
+export async function toggleReactionAction(input: {
+  programSlug: string;
+  targetType: "post" | "comment" | "message";
+  targetId: string;
+  emoji: string;
+}): Promise<ActionResult> {
+  const db = getDb();
+  const result = await requireContext(input.programSlug);
+  if ("error" in result || !db) return fail((result as { error: string }).error);
+
+  if (
+    !["post", "comment", "message"].includes(input.targetType) ||
+    !isId(input.targetId) ||
+    !isReaction(input.emoji)
+  ) {
+    return fail("Не удалось поставить реакцию");
+  }
+
+  const target = await reactionTarget(input.targetType, input.targetId, result.context);
+  if (!target) return fail("Не найдено");
+
+  const where = and(
+    eq(schema.reactions.targetType, input.targetType),
+    eq(schema.reactions.targetId, input.targetId),
+    eq(schema.reactions.memberId, result.context.memberId),
+    eq(schema.reactions.emoji, input.emoji),
+  );
+
+  const removed = await db.delete(schema.reactions).where(where).returning({ id: schema.reactions.id });
+  if (removed.length === 0) {
+    await db
+      .insert(schema.reactions)
+      .values({
+        targetType: input.targetType,
+        targetId: input.targetId,
+        memberId: result.context.memberId,
+        emoji: input.emoji,
+        createdAt: new Date(),
+      })
+      .onConflictDoNothing();
+  }
+
+  if (input.targetType === "message" && target.conversationId && target.memberIds) {
+    publish({
+      type: "message",
+      programSlug: input.programSlug,
+      conversationId: target.conversationId,
+      memberIds: target.memberIds,
+    });
+  } else {
+    publish({ type: "channel", programSlug: input.programSlug });
+  }
   return { ok: true };
 }
 
 /* --- Опросы ------------------------------------------------------------- */
 
+const KINDS: QuestionKind[] = ["single", "multiple", "open", "scale", "quiz"];
+
 /**
- * Ответ участника на вопрос опроса.
+ * Ответ участника на текущий вопрос живой сессии.
  *
- * Автор берётся из сессии. В анонимном опросе участник не записывается —
- * это и есть анонимность: связь с человеком не хранится.
+ * Анонимность определяет сервер по настройке опроса, а не браузер.
+ * В анонимном опросе участник не записывается — хранится только
+ * обезличенный ключ, который не даёт ответить дважды.
  */
 export async function submitPollResponseAction(input: {
   programSlug: string;
   sessionId: string;
   questionId: string;
-  anonymous: boolean;
   value: { optionIds: string[]; text?: string; scale?: number };
 }): Promise<ActionResult> {
   const db = getDb();
   const result = await requireContext(input.programSlug);
-  if ("error" in result || !db) return { ok: false, error: (result as { error: string }).error };
+  if ("error" in result || !db) return fail((result as { error: string }).error);
+  if (!isId(input.sessionId) || !isId(input.questionId)) return fail("Опрос не найден");
 
-  const { memberId } = result.context;
-
-  // Отвечать можно только в живую сессию своей программы, которая принимает ответы
   const [session] = await db
     .select({
       id: schema.pollSessions.id,
+      pollId: schema.pollSessions.pollId,
       accepting: schema.pollSessions.accepting,
       status: schema.pollSessions.status,
+      currentIndex: schema.pollSessions.currentIndex,
+      anonymous: schema.polls.anonymous,
     })
     .from(schema.pollSessions)
     .innerJoin(schema.polls, eq(schema.polls.id, schema.pollSessions.pollId))
@@ -232,28 +311,94 @@ export async function submitPollResponseAction(input: {
       ),
     );
 
-  if (!session) return { ok: false, error: "Опрос не найден" };
-  if (session.status !== "live" || !session.accepting) {
-    return { ok: false, error: "Приём ответов закрыт" };
+  if (!session) return fail("Опрос не найден");
+  if (session.status !== "live" || !session.accepting) return fail("Приём ответов закрыт");
+
+  const [question] = await db
+    .select({
+      id: schema.pollQuestions.id,
+      kind: schema.pollQuestions.kind,
+      options: schema.pollQuestions.options,
+      position: schema.pollQuestions.position,
+    })
+    .from(schema.pollQuestions)
+    .where(
+      and(
+        eq(schema.pollQuestions.id, input.questionId),
+        eq(schema.pollQuestions.pollId, session.pollId),
+      ),
+    );
+
+  if (!question || question.position !== session.currentIndex) {
+    return fail("Этот вопрос уже закрыт");
   }
 
-  try {
-    await db.insert(schema.pollResponses).values({
+  const value = cleanAnswer(question.kind, question.options, input.value);
+  if (!value) return fail("Ответ не распознан");
+
+  const { memberId } = result.context;
+  const inserted = await db
+    .insert(schema.pollResponses)
+    .values({
       id: `response-${randomUUID()}`,
-      sessionId: input.sessionId,
-      questionId: input.questionId,
-      memberId: input.anonymous ? null : memberId,
-      optionIds: input.value.optionIds,
-      text: input.value.text ?? null,
-      scale: input.value.scale ?? null,
+      sessionId: session.id,
+      questionId: question.id,
+      memberId: session.anonymous ? null : memberId,
+      respondentKey: respondentKey(memberId, session.id),
+      optionIds: value.optionIds,
+      text: value.text ?? null,
+      scale: value.scale ?? null,
       createdAt: new Date(),
-    });
-  } catch {
-    return { ok: false, error: "Вопрос не найден в этом опросе" };
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.pollResponses.id });
+
+  if (inserted.length === 0) return fail("Вы уже ответили на этот вопрос");
+
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(schema.pollResponses)
+    .where(
+      and(
+        eq(schema.pollResponses.sessionId, session.id),
+        eq(schema.pollResponses.questionId, question.id),
+      ),
+    );
+
+  publish({
+    type: "poll-responses",
+    programSlug: input.programSlug,
+    sessionId: session.id,
+    questionId: question.id,
+    total: Number(total),
+  });
+  return { ok: true };
+}
+
+function cleanAnswer(
+  kind: QuestionKind,
+  options: QuestionOption[],
+  value: { optionIds?: unknown; text?: unknown; scale?: unknown } | undefined,
+): { optionIds: string[]; text?: string; scale?: number } | null {
+  if (!value || typeof value !== "object") return null;
+
+  if (kind === "open") {
+    const text = cleanText(value.text, 300);
+    return text ? { optionIds: [], text } : null;
   }
 
-  refresh(input.programSlug);
-  return { ok: true };
+  if (kind === "scale") {
+    const scale = Number(value.scale);
+    return Number.isInteger(scale) && scale >= 1 && scale <= 5 ? { optionIds: [], scale } : null;
+  }
+
+  const known = new Set(options.map((option) => option.id));
+  const ids = Array.isArray(value.optionIds)
+    ? [...new Set(value.optionIds.filter((id): id is string => typeof id === "string" && known.has(id)))]
+    : [];
+  if (ids.length === 0) return null;
+  if (kind !== "multiple" && ids.length > 1) return null;
+  return { optionIds: ids };
 }
 
 /**
@@ -285,55 +430,83 @@ export async function createPollAction(input: {
 > {
   const db = getDb();
   const result = await requireContext(input.programSlug, { staff: true });
-  if ("error" in result || !db) return { ok: false, error: (result as { error: string }).error };
+  if ("error" in result || !db) return fail((result as { error: string }).error);
+
+  const title = cleanText(input.title, 200);
+  if (!title) return fail("Назовите опрос");
+  if (!Array.isArray(input.questions) || input.questions.length === 0 || input.questions.length > 50) {
+    return fail("В опросе должен быть хотя бы один вопрос");
+  }
+
+  const questions: Omit<typeof schema.pollQuestions.$inferInsert, "id" | "pollId" | "position">[] =
+    [];
+  for (const question of input.questions) {
+    const questionTitle = cleanText(question?.title, 300);
+    if (!questionTitle || !KINDS.includes(question.kind as QuestionKind)) {
+      return fail("У каждого вопроса должен быть текст");
+    }
+    const kind = question.kind as QuestionKind;
+    const options = Array.isArray(question.options)
+      ? question.options.slice(0, 20).map((option, index) => ({
+          id: isId(option?.id) ? option.id : `opt-${index + 1}`,
+          text: cleanText(option?.text, 200) ?? `Вариант ${index + 1}`,
+          ...(option?.correct ? { correct: true } : {}),
+        }))
+      : [];
+    if ((kind === "single" || kind === "multiple" || kind === "quiz") && options.length < 2) {
+      return fail("В вопросе с вариантами нужно хотя бы два варианта");
+    }
+    questions.push({
+      kind,
+      title: questionTitle,
+      hint: cleanText(question.hint, 300) ?? null,
+      options,
+      scaleLabels:
+        kind === "scale" && question.scaleLabels
+          ? {
+              min: cleanText(question.scaleLabels.min, 60) ?? "",
+              max: cleanText(question.scaleLabels.max, 60) ?? "",
+            }
+          : null,
+      visual: kind === "open" ? (question.visual === "list" ? "list" : "cloud") : null,
+      timeLimit: Math.max(0, Math.min(600, Math.round(Number(question.timeLimit) || 0))),
+      points: Math.max(0, Math.min(1000, Math.round(Number(question.points) || 0))),
+    });
+  }
 
   const pollId = `poll-${randomUUID()}`;
   const sessionId = `session-${randomUUID()}`;
-  const code = String(Math.floor(1000 + Math.random() * 9000));
-  const questionIds = input.questions.map((_, index) => `${pollId}--q${index + 1}`);
+  const code = String(randomInt(1000, 10000));
+  const questionIds = questions.map((_, index) => `${pollId}--q${index + 1}`);
 
-  await db.insert(schema.polls).values({
-    id: pollId,
-    programId: result.context.programId,
-    title: input.title,
-    description: input.description ?? null,
-    anonymous: input.anonymous,
-    source: input.source,
-    templateKey: input.templateKey ?? null,
-    createdAt: new Date(),
-  });
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.polls).values({
+      id: pollId,
+      programId: result.context.programId,
+      title,
+      description: cleanText(input.description, 600) ?? null,
+      anonymous: Boolean(input.anonymous),
+      source: input.source === "template" ? "template" : "custom",
+      templateKey: cleanText(input.templateKey, 80) ?? null,
+      createdAt: new Date(),
+    });
 
-  if (input.questions.length > 0) {
-    await db.insert(schema.pollQuestions).values(
-      input.questions.map((question, index) => ({
-        id: questionIds[index],
-        pollId,
-        position: index,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        kind: question.kind as any,
-        title: question.title,
-        hint: question.hint ?? null,
-        options: question.options,
-        scaleLabels: question.scaleLabels ?? null,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        visual: (question.visual ?? null) as any,
-        timeLimit: question.timeLimit,
-        points: question.points,
-      })),
+    await tx.insert(schema.pollQuestions).values(
+      questions.map((question, index) => ({ ...question, id: questionIds[index], pollId, position: index })),
     );
-  }
 
-  await db.insert(schema.pollSessions).values({
-    id: sessionId,
-    pollId,
-    code,
-    status: "draft",
-    currentIndex: 0,
-    accepting: false,
-    showResults: false,
+    await tx.insert(schema.pollSessions).values({
+      id: sessionId,
+      pollId,
+      code,
+      status: "draft",
+      currentIndex: 0,
+      accepting: false,
+      showResults: false,
+    });
   });
 
-  refresh(input.programSlug);
+  publish({ type: "polls", programSlug: input.programSlug });
   return { ok: true, pollId, sessionId, code, questionIds };
 }
 
@@ -348,97 +521,261 @@ export async function updatePollSessionAction(input: {
 }): Promise<ActionResult> {
   const db = getDb();
   const result = await requireContext(input.programSlug, { staff: true });
-  if ("error" in result || !db) return { ok: false, error: (result as { error: string }).error };
+  if ("error" in result || !db) return fail((result as { error: string }).error);
+  if (!isId(input.sessionId) || !["draft", "live", "finished"].includes(input.status)) {
+    return fail("Сессия не найдена");
+  }
+
+  // Сессия должна принадлежать опросу этой программы
+  const [session] = await db
+    .select({
+      id: schema.pollSessions.id,
+      status: schema.pollSessions.status,
+      questions: sql<number>`(select count(*)::int from poll_questions q where q.poll_id = ${schema.pollSessions.pollId})`,
+    })
+    .from(schema.pollSessions)
+    .innerJoin(schema.polls, eq(schema.polls.id, schema.pollSessions.pollId))
+    .where(
+      and(
+        eq(schema.pollSessions.id, input.sessionId),
+        eq(schema.polls.programId, result.context.programId),
+      ),
+    );
+  if (!session) return fail("Сессия не найдена");
+
+  const currentIndex = Math.max(
+    0,
+    Math.min(Number(session.questions) - 1, Math.round(Number(input.currentIndex) || 0)),
+  );
+  const state = {
+    status: input.status,
+    currentIndex,
+    accepting: input.status === "live" && Boolean(input.accepting),
+    showResults: Boolean(input.showResults),
+  };
 
   await db
     .update(schema.pollSessions)
     .set({
-      status: input.status,
-      currentIndex: input.currentIndex,
-      accepting: input.accepting,
-      showResults: input.showResults,
-      ...(input.status === "live" ? { startedAt: new Date() } : {}),
-      ...(input.status === "finished" ? { finishedAt: new Date() } : {}),
+      ...state,
+      ...(input.status === "live" && session.status !== "live" ? { startedAt: new Date() } : {}),
+      ...(input.status === "finished" && session.status !== "finished"
+        ? { finishedAt: new Date() }
+        : {}),
     })
-    .where(eq(schema.pollSessions.id, input.sessionId));
+    .where(eq(schema.pollSessions.id, session.id));
 
-  refresh(input.programSlug);
+  publish({ type: "poll-session", programSlug: input.programSlug, sessionId: session.id, ...state });
   return { ok: true };
 }
 
 /* --- Чаты --------------------------------------------------------------- */
 
+async function conversationMemberIds(conversationId: string): Promise<string[]> {
+  const db = getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ memberId: schema.conversationMembers.memberId })
+    .from(schema.conversationMembers)
+    .where(eq(schema.conversationMembers.conversationId, conversationId));
+  return rows.map((row) => row.memberId);
+}
+
+/** Беседа программы, в которой состоит человек. */
+async function ownConversation(conversationId: unknown, context: Context) {
+  const db = getDb();
+  if (!db || !isId(conversationId)) return null;
+
+  const [conversation] = await db
+    .select({ id: schema.conversations.id })
+    .from(schema.conversations)
+    .where(
+      and(
+        eq(schema.conversations.id, conversationId),
+        eq(schema.conversations.programId, context.programId),
+      ),
+    );
+  if (!conversation) return null;
+
+  const memberIds = await conversationMemberIds(conversation.id);
+  return memberIds.includes(context.memberId) ? { id: conversation.id, memberIds } : null;
+}
+
 export async function sendMessageAction(input: {
   programSlug: string;
+  id: string;
   conversationId: string;
   body: RichDoc;
-  attachments: Attachment[];
+  attachments: unknown;
   replyToId?: string;
 }): Promise<ActionResult> {
   const db = getDb();
   const result = await requireContext(input.programSlug);
-  if ("error" in result || !db) return { ok: false, error: (result as { error: string }).error };
+  if ("error" in result || !db) return fail((result as { error: string }).error);
 
-  const { memberId } = result.context;
+  const attachments = cleanAttachments(input.attachments);
+  if (!isClientId("msg", input.id) || !isRichDoc(input.body) || !attachments) {
+    return fail("Не удалось прочитать сообщение");
+  }
 
-  // Писать можно только в беседу, где участник состоит
-  const membership = await db
-    .select({ conversationId: schema.conversationMembers.conversationId })
-    .from(schema.conversationMembers)
-    .where(
-      and(
-        eq(schema.conversationMembers.conversationId, input.conversationId),
-        eq(schema.conversationMembers.memberId, memberId),
-      ),
-    );
+  const conversation = await ownConversation(input.conversationId, result.context);
+  if (!conversation) return fail("Вы не участник этой беседы");
 
-  if (membership.length === 0) return { ok: false, error: "Вы не участник этой беседы" };
+  let replyToId: string | null = null;
+  if (input.replyToId !== undefined) {
+    if (!isId(input.replyToId)) return fail("Сообщение для ответа не найдено");
+    const [reply] = await db
+      .select({ id: schema.messages.id })
+      .from(schema.messages)
+      .where(
+        and(
+          eq(schema.messages.id, input.replyToId),
+          eq(schema.messages.conversationId, conversation.id),
+        ),
+      );
+    replyToId = reply?.id ?? null;
+  }
 
-  await db.insert(schema.messages).values({
-    id: `msg-${randomUUID()}`,
-    conversationId: input.conversationId,
-    authorId: memberId,
-    body: input.body,
-    attachments: input.attachments,
-    replyToId: input.replyToId ?? null,
-    createdAt: new Date(),
+  await db
+    .insert(schema.messages)
+    .values({
+      id: input.id,
+      conversationId: conversation.id,
+      authorId: result.context.memberId,
+      body: input.body,
+      attachments,
+      replyToId,
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing();
+
+  await markRead(conversation.id, result.context.memberId);
+
+  publish({
+    type: "message",
+    programSlug: input.programSlug,
+    conversationId: conversation.id,
+    memberIds: conversation.memberIds,
   });
-
-  refresh(input.programSlug);
   return { ok: true };
 }
 
+/**
+ * Новая беседа. Группу создаёт команда программы, личный диалог — любой участник.
+ * Для личного диалога возвращается уже существующая беседа, если она есть.
+ */
 export async function createConversationAction(input: {
   programSlug: string;
+  id: string;
   kind: "group" | "direct";
   title?: string;
   topic?: string;
   emoji?: string;
   memberIds: string[];
-}): Promise<ActionResult & { conversationId?: string }> {
+}): Promise<{ ok: true; conversationId: string } | { ok: false; error: string }> {
   const db = getDb();
-  const result = await requireContext(input.programSlug, { staff: input.kind === "group" });
-  if ("error" in result || !db) return { ok: false, error: (result as { error: string }).error };
+  const kind = input.kind === "direct" ? "direct" : "group";
+  const result = await requireContext(input.programSlug, { staff: kind === "group" });
+  if ("error" in result || !db) return fail((result as { error: string }).error);
+  if (!isClientId("conv", input.id)) return fail("Не удалось создать беседу");
 
   const { memberId, programId } = result.context;
-  const conversationId = `conv-${randomUUID()}`;
+  const requested = Array.isArray(input.memberIds)
+    ? [...new Set(input.memberIds.filter((id) => isId(id) && id !== memberId))]
+    : [];
 
-  await db.insert(schema.conversations).values({
-    id: conversationId,
-    programId,
-    kind: input.kind,
-    title: input.title ?? null,
-    topic: input.topic ?? null,
-    emoji: input.emoji ?? null,
-    createdBy: memberId,
-    createdAt: new Date(),
+  // В беседу можно позвать только участников этой программы
+  const valid = requested.length
+    ? (
+        await db
+          .select({ memberId: schema.programMembers.memberId })
+          .from(schema.programMembers)
+          .where(
+            and(
+              eq(schema.programMembers.programId, programId),
+              inArray(schema.programMembers.memberId, requested),
+            ),
+          )
+      ).map((row) => row.memberId)
+    : [];
+
+  if (kind === "direct" && valid.length !== 1) return fail("Собеседник не найден");
+  if (kind === "group" && valid.length + 1 > MAX_GROUP_MEMBERS) {
+    return fail(`В группе может быть не больше ${MAX_GROUP_MEMBERS} человек`);
+  }
+
+  const title = cleanText(input.title, 120);
+  if (kind === "group" && !title) return fail("Назовите группу");
+
+  if (kind === "direct") {
+    const existing = await findDirect(programId, memberId, valid[0]);
+    if (existing) return { ok: true, conversationId: existing };
+  }
+
+  const participantIds = [memberId, ...valid];
+
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.conversations).values({
+      id: input.id,
+      programId,
+      kind,
+      title: title ?? null,
+      topic: cleanText(input.topic, 200) ?? null,
+      emoji: cleanText(input.emoji, 8) ?? null,
+      createdBy: memberId,
+      createdAt: new Date(),
+    });
+    await tx
+      .insert(schema.conversationMembers)
+      .values(participantIds.map((id) => ({ conversationId: input.id, memberId: id })));
   });
 
-  const participantIds = [...new Set([memberId, ...input.memberIds])];
-  await db.insert(schema.conversationMembers).values(
-    participantIds.map((id) => ({ conversationId, memberId: id })),
-  );
+  publish({
+    type: "conversation",
+    programSlug: input.programSlug,
+    conversationId: input.id,
+    memberIds: participantIds,
+  });
+  return { ok: true, conversationId: input.id };
+}
 
-  refresh(input.programSlug);
-  return { ok: true, conversationId };
+async function findDirect(programId: number, a: string, b: string): Promise<string | null> {
+  const db = getDb();
+  if (!db) return null;
+  const rows = await db.execute<{ id: string }>(sql`
+    select c.id from conversations c
+    where c.program_id = ${programId} and c.kind = 'direct'
+      and exists (select 1 from conversation_members m where m.conversation_id = c.id and m.member_id = ${a})
+      and exists (select 1 from conversation_members m where m.conversation_id = c.id and m.member_id = ${b})
+    limit 1
+  `);
+  return rows[0]?.id ?? null;
+}
+
+async function markRead(conversationId: string, memberId: string): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  const now = new Date();
+  await db
+    .insert(schema.chatReadState)
+    .values({ conversationId, memberId, lastReadAt: now })
+    .onConflictDoUpdate({
+      target: [schema.chatReadState.conversationId, schema.chatReadState.memberId],
+      set: { lastReadAt: now },
+    });
+}
+
+/** Отметка «прочитано»: счётчики непрочитанных сохраняются между входами и устройствами. */
+export async function markReadAction(input: {
+  programSlug: string;
+  conversationId: string;
+}): Promise<ActionResult> {
+  const result = await requireContext(input.programSlug);
+  if ("error" in result) return fail(result.error);
+
+  const conversation = await ownConversation(input.conversationId, result.context);
+  if (!conversation) return fail("Беседа не найдена");
+
+  await markRead(conversation.id, result.context.memberId);
+  return { ok: true };
 }

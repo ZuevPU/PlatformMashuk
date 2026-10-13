@@ -32,12 +32,12 @@ export function MessageFeed({
 }: MessageFeedProps) {
   if (messages.length === 0) {
     return (
-      <div className="grid min-h-[320px] place-items-center rounded-[20px] border border-dashed border-[var(--line)] bg-white/60 px-6 text-center">
+      <div className="grid min-h-80 place-items-center rounded-panel border border-dashed border-[var(--line)] bg-white/60 px-6 text-center">
         <div>
           <p className="m-0 mb-1.5 font-display text-lg font-semibold text-navy">
             Здесь пока тихо
           </p>
-          <p className="m-0 text-[13px] text-ink-faint">
+          <p className="m-0 text-meta text-ink-faint">
             Напишите первое сообщение — участники увидят его сразу.
           </p>
         </div>
@@ -53,7 +53,7 @@ export function MessageFeed({
         <div key={group.date} className="flex flex-col gap-3.5">
           <div className="flex items-center gap-3">
             <span className="h-px flex-1 bg-[var(--line)]" />
-            <span className="text-[11px] font-semibold tracking-[0.1em] text-ink-faint uppercase">
+            <span className="text-micro font-semibold tracking-[0.1em] text-ink-faint uppercase">
               {formatDayMonth(group.date)}
             </span>
             <span className="h-px flex-1 bg-[var(--line)]" />
@@ -84,7 +84,7 @@ export function MessageFeed({
                 >
                   {!isOwn && conversation.kind === "group" && (
                     <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                      <span className="text-[13px] font-semibold text-ink">
+                      <span className="text-meta font-semibold text-ink">
                         {author?.name ?? "Участник"}
                       </span>
                       {author && <RoleBadge role={author.role} />}
@@ -92,7 +92,7 @@ export function MessageFeed({
                   )}
 
                   <div
-                    className="w-full rounded-[18px] border px-4 py-3"
+                    className="w-full rounded-soft border px-4 py-3"
                     style={
                       isOwn
                         ? {
@@ -108,10 +108,10 @@ export function MessageFeed({
                   >
                     {replied && (
                       <div className="mb-2.5 border-l-2 border-[var(--accent)] pl-3">
-                        <p className="m-0 text-[11px] font-semibold text-ink-soft">
+                        <p className="m-0 text-micro font-semibold text-ink-soft">
                           {repliedAuthor?.name ?? "Участник"}
                         </p>
-                        <p className="m-0 line-clamp-2 text-[12px] text-ink-faint">
+                        <p className="m-0 line-clamp-2 text-caption text-ink-faint">
                           {docToText(replied.body).slice(0, 120)}
                         </p>
                       </div>
@@ -127,21 +127,21 @@ export function MessageFeed({
                             href={attachment.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="block overflow-hidden rounded-[14px] border border-[var(--line)]"
+                            className="block overflow-hidden rounded-field border border-[var(--line)]"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element -- вложение чата */}
                             <img
                               src={attachment.url}
                               alt={attachment.alt}
                               loading="lazy"
-                              className="max-h-[260px] w-full object-cover"
+                              className="max-h-65 w-full object-cover"
                             />
                           </a>
                         ))}
                       </div>
                     )}
 
-                    <p className="m-0 mt-2 flex items-center gap-1.5 text-[11px] text-ink-faint">
+                    <p className="m-0 mt-2 flex items-center gap-1.5 text-micro text-ink-faint">
                       {message.attachments.length > 0 && <Paperclip size={11} />}
                       {formatTime(message.createdAt)}
                     </p>
@@ -157,7 +157,7 @@ export function MessageFeed({
                       type="button"
                       onClick={() => onSetReply(replyTo?.id === message.id ? null : message)}
                       className={[
-                        "inline-flex cursor-pointer items-center gap-1.5 text-[11px] font-medium transition-colors duration-200",
+                        "inline-flex cursor-pointer items-center gap-1.5 text-micro font-medium transition-colors duration-200",
                         replyTo?.id === message.id ? "text-navy" : "text-ink-faint hover:text-navy",
                       ].join(" ")}
                     >

@@ -5,7 +5,7 @@ import { MessageSquare, Pin, PinOff } from "lucide-react";
 import { Avatar, RoleBadge } from "./Avatar";
 import { ReactionBar } from "./ReactionBar";
 import { RichText } from "./RichText";
-import { Composer } from "./Composer";
+import { Composer } from "./LazyComposer";
 import { CommentThread } from "./CommentThread";
 import type { ComposerPayload } from "./Composer";
 import type { Member, Post } from "@/lib/types";
@@ -50,14 +50,14 @@ export function PostCard({
         <Avatar member={author} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[15px] font-semibold text-ink">{author?.name ?? "Участник"}</span>
+            <span className="text-body font-semibold text-ink">{author?.name ?? "Участник"}</span>
             {author && <RoleBadge role={author.role} />}
             {post.pinned && (
               <span
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-[0.06em] uppercase"
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-micro font-semibold tracking-[0.06em] uppercase"
                 style={{
                   background: "color-mix(in oklab, var(--accent) 14%, white)",
-                  color: "color-mix(in oklab, var(--accent) 62%, #0a1014)",
+                  color: "var(--accent-ink)",
                 }}
               >
                 <Pin size={11} />
@@ -65,7 +65,7 @@ export function PostCard({
               </span>
             )}
           </div>
-          <p className="m-0 mt-0.5 text-[12px] text-ink-faint">
+          <p className="m-0 mt-0.5 text-caption text-ink-faint">
             {formatDateTimeLabel(post.createdAt)}
           </p>
         </div>
@@ -75,7 +75,7 @@ export function PostCard({
             type="button"
             onClick={() => onTogglePin(post.id)}
             title={post.pinned ? "Снять закреп" : "Закрепить пост"}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-[12px] font-medium text-ink-soft transition-all duration-200 ease-brand hover:-translate-y-0.5 hover:text-navy"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-caption font-medium text-ink-soft transition-all duration-200 ease-brand hover:-translate-y-0.5 hover:text-navy"
           >
             {post.pinned ? <PinOff size={13} /> : <Pin size={13} />}
             {post.pinned ? "Снять" : "Закрепить"}
@@ -104,7 +104,7 @@ export function PostCard({
               target="_blank"
               rel="noopener noreferrer"
               className={[
-                "overflow-hidden rounded-[16px] border border-[var(--line)] transition-transform duration-200 ease-brand hover:-translate-y-0.5",
+                "overflow-hidden rounded-2xl border border-[var(--line)] transition-transform duration-200 ease-brand hover:-translate-y-0.5",
                 post.attachments.length === 1 ? "inline-block max-w-full" : "block",
               ].join(" ")}
             >
@@ -115,8 +115,8 @@ export function PostCard({
                 loading="lazy"
                 className={
                   post.attachments.length === 1
-                    ? "max-h-[360px] w-auto max-w-full object-contain"
-                    : "max-h-[320px] w-full object-cover"
+                    ? "max-h-90 w-auto max-w-full object-contain"
+                    : "max-h-80 w-full object-cover"
                 }
               />
             </a>
@@ -135,7 +135,7 @@ export function PostCard({
         <button
           type="button"
           onClick={() => setCommentsOpen((value) => !value)}
-          className="inline-flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-navy transition-opacity duration-200 hover:opacity-75"
+          className="inline-flex cursor-pointer items-center gap-2 text-meta font-semibold text-navy transition-opacity duration-200 hover:opacity-75"
         >
           <MessageSquare size={15} />
           {total > 0

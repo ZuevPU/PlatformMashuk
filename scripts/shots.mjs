@@ -10,6 +10,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
+import { readCredentials } from "./lib/browser.mjs";
 
 const BASE = (process.argv[2] ?? "http://127.0.0.1:4321").replace(/\/$/, "");
 const OUT = "docs/screenshots";
@@ -120,24 +121,36 @@ async function main() {
     await shoot("01-home-hero", { height: 900 });
     await shoot("02-home-full", { height: 1200, full: true });
 
-    await go(`${BASE}/programs/kinopedagogika`, "!!document.querySelector('h1')");
+    await go(`${BASE}/programs/obrazovanie-na-vysote`, "!!document.querySelector('h1')");
     await shoot("03-program-hero", { height: 900 });
 
+    // Хаб закрыт: входим тестовым администратором из seed
+    const { adminLogin, adminPassword } = readCredentials();
+    await go(`${BASE}/join`, "!!document.querySelector('input[name=contact]')");
+    await evaluate(`(() => {
+      document.querySelector('input[name=contact]').value = ${JSON.stringify(adminLogin)};
+      document.querySelector('input[name=password]').value = ${JSON.stringify(adminPassword ?? "")};
+      document.querySelector('form button[type=submit]').click();
+    })()`);
+    await sleep(4000);
+    await go(`${BASE}/admin/programs/obrazovanie-na-vysote/schedule`, "document.body.innerText.includes('Добавить день')");
+    await shoot("13-admin-schedule", { height: 1000 });
+
     await go(
-      `${BASE}/programs/kinopedagogika/hub`,
+      `${BASE}/programs/obrazovanie-na-vysote/hub`,
       "!!document.querySelector('.ProseMirror')",
       2200,
     );
     await shoot("05-hub-channel", { height: 1000 });
 
     await go(
-      `${BASE}/programs/kinopedagogika/hub?tab=members`,
+      `${BASE}/programs/obrazovanie-na-vysote/hub?tab=members`,
       "document.body.textContent.includes('Кто в программе')",
     );
     await shoot("06-hub-members", { height: 1000 });
 
     await go(
-      `${BASE}/programs/kinopedagogika/hub?tab=polls`,
+      `${BASE}/programs/obrazovanie-na-vysote/hub?tab=polls`,
       "document.body.textContent.includes('Живая обратная связь')",
     );
     await shoot("08-polls-list", { height: 1100 });
@@ -165,7 +178,7 @@ async function main() {
 
     // Чаты: список бесед с непрочитанными и открытая группа
     await go(
-      `${BASE}/programs/kinopedagogika/hub?tab=chats`,
+      `${BASE}/programs/obrazovanie-na-vysote/hub?tab=chats`,
       "document.body.textContent.includes('Чаты программы')",
       2200,
     );

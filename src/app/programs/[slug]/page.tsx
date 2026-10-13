@@ -7,7 +7,7 @@ import { MountainLine } from "@/components/brand/MountainLine";
 import { DaySchedule } from "@/components/programs/DaySchedule";
 import { StatusChip } from "@/components/programs/StatusChip";
 import { getProgram } from "@/lib/data";
-import { SEASONS } from "@/lib/brand";
+import { SEASONS, seasonStyle } from "@/lib/brand";
 import { DIRECTIONS } from "@/lib/types";
 import { durationDays, formatDateRange, relativeToStart } from "@/lib/dates";
 
@@ -43,17 +43,14 @@ export default async function ProgramPage({ params }: PageProps) {
   const direction = DIRECTIONS.find((item) => item.key === program.direction);
   const days = durationDays(program.startDate, program.endDate);
 
-  const seasonVars = {
-    "--accent": season.accent,
-    "--accent-strong": season.strong,
-  } as CSSProperties;
+  const seasonVars = seasonStyle(program.season) as CSSProperties;
 
   return (
     <div data-season={program.season} style={seasonVars}>
       {/* ---------------------------------------------------------------- HERO */}
-      <section className="mesh mesh--accent relative pt-[76px] pb-[84px]">
+      <section className="mesh mesh--accent relative pt-19 pb-21">
         <div className="wrap relative">
-          <nav aria-label="Хлебные крошки" className="mb-9 text-[13px] text-white/66">
+          <nav aria-label="Хлебные крошки" className="mb-9 text-meta text-white/66">
             <Link href="/" className="no-underline hover:text-white">
               Программы
             </Link>
@@ -65,19 +62,19 @@ export default async function ProgramPage({ params }: PageProps) {
 
           <div className="mb-6 flex flex-wrap items-center gap-3">
             <StatusChip status={program.status} size="md" />
-            <span className="text-[12px] font-semibold tracking-[0.16em] text-sky-light uppercase">
+            <span className="text-caption font-semibold tracking-[0.16em] text-sky-light uppercase">
               {direction?.label}
             </span>
             {program.stream && (
-              <span className="text-[12px] text-white/60">{program.stream}</span>
+              <span className="text-caption text-white/60">{program.stream}</span>
             )}
           </div>
 
           <p className="eyebrow eyebrow--light">{program.subtitle}</p>
-          <h1 className="m-0 mb-7 max-w-[900px] font-display text-[clamp(40px,6.4vw,88px)] leading-[0.94] font-semibold tracking-[-0.065em] text-white">
+          <h1 className="m-0 mb-7 max-w-225 font-display text-[clamp(40px,6.4vw,88px)] leading-[0.94] font-semibold tracking-[-0.065em] text-white">
             {program.title}
           </h1>
-          <p className="lead lead--light mb-10 max-w-[720px]">{program.hero.lead}</p>
+          <p className="lead lead--light mb-10 max-w-180">{program.hero.lead}</p>
 
           <div className="flex flex-wrap gap-3">
             <ButtonLink href="#schedule" variant="light">
@@ -95,11 +92,11 @@ export default async function ProgramPage({ params }: PageProps) {
 
           <div className="mt-14 grid gap-2.5 sm:grid-cols-3">
             {program.hero.facts.map((fact) => (
-              <div key={fact.label} className="glass px-5 py-[18px]">
-                <b className="mb-1.5 block font-display text-[23px] font-semibold tracking-[-0.02em] text-white">
+              <div key={fact.label} className="glass px-5 py-4.5">
+                <b className="mb-1.5 block font-display text-title font-semibold tracking-[-0.02em] text-white">
                   {fact.value}
                 </b>
-                <span className="text-[13px] leading-snug text-white/72">{fact.label}</span>
+                <span className="text-meta leading-snug text-white/72">{fact.label}</span>
               </div>
             ))}
           </div>
@@ -112,10 +109,10 @@ export default async function ProgramPage({ params }: PageProps) {
         <div className="wrap grid gap-14 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
           {program.about.quote ? (
             <aside
-              className="mesh mesh--accent rounded-[26px] p-8 lg:sticky lg:top-[110px]"
+              className="mesh mesh--accent rounded-card p-8 lg:sticky lg:top-27.5"
               style={seasonVars}
             >
-              <p className="m-0 font-long text-[25px] leading-[1.45] italic text-white">
+              <p className="m-0 font-long text-title-lg leading-[1.45] italic text-white">
                 {program.about.quote.text}
               </p>
               <small className="mt-6 block leading-relaxed text-sky-light">
@@ -134,7 +131,7 @@ export default async function ProgramPage({ params }: PageProps) {
             <div className="mt-9 grid gap-4">
               {program.about.blocks.map((block) => (
                 <article key={block.title} className="card p-7">
-                  <h3 className="m-0 mb-2 font-display text-[21px] font-semibold tracking-[-0.02em] text-navy">
+                  <h3 className="m-0 mb-2 font-display text-title-sm font-semibold tracking-[-0.02em] text-navy">
                     {block.title}
                   </h3>
                   <p className="m-0 leading-relaxed text-ink-soft">{block.text}</p>
@@ -163,7 +160,7 @@ export default async function ProgramPage({ params }: PageProps) {
           className="section relative overflow-hidden bg-black-ink text-white"
           style={{
             backgroundImage:
-              "radial-gradient(circle at 18% 0%, rgba(84,164,219,0.2), transparent 58%), radial-gradient(circle at 88% 100%, rgba(162,133,95,0.16), transparent 52%)",
+              "radial-gradient(circle at 18% 0%, color-mix(in oklab, var(--color-sky) 20%, transparent), transparent 58%), radial-gradient(circle at 88% 100%, color-mix(in oklab, var(--color-gold) 16%, transparent), transparent 52%)",
           }}
         >
           <div className="wrap">
@@ -174,9 +171,9 @@ export default async function ProgramPage({ params }: PageProps) {
               {program.results.map((result, index) => (
                 <article
                   key={result.title}
-                  className="flex min-h-[250px] flex-col rounded-[22px] border border-white/12 bg-white/[0.045] p-7"
+                  className="flex min-h-62.5 flex-col rounded-panel border border-white/12 bg-white/[0.045] p-7"
                 >
-                  <span className="mb-[62px] inline-grid size-10 place-items-center rounded-xl bg-white font-semibold text-navy">
+                  <span className="mb-15.5 inline-grid size-10 place-items-center rounded-xl bg-white font-semibold text-navy">
                     {String(index + 1).padStart(2, "0")}
                   </span>
                   <h3 className="m-0 mb-2.5 font-display text-xl font-semibold tracking-[-0.02em]">
@@ -201,7 +198,7 @@ export default async function ProgramPage({ params }: PageProps) {
                   {days} {days === 1 ? "день" : days < 5 ? "дня" : "дней"} программы
                 </h2>
               </div>
-              <p className="m-0 max-w-[380px] text-sm leading-relaxed text-ink-soft">
+              <p className="m-0 max-w-95 text-sm leading-relaxed text-ink-soft">
                 Блоки, время и эксперты. После завершения программы к каждому блоку
                 прикрепляются материалы.
               </p>
@@ -228,11 +225,11 @@ export default async function ProgramPage({ params }: PageProps) {
               )}
             </div>
 
-            <div className="grid gap-[18px] md:grid-cols-2">
+            <div className="grid gap-4.5 md:grid-cols-2">
               {program.materials.map((material) => (
-                <article key={material.id} className="card card--hover min-h-[320px] p-7">
+                <article key={material.id} className="card card--hover min-h-80 p-7">
                   <div className="mb-8 flex items-start justify-between gap-5">
-                    <span className="text-[11px] font-semibold tracking-[0.14em] text-gold uppercase">
+                    <span className="text-micro font-semibold tracking-[0.14em] text-gold-ink uppercase">
                       День {material.day} · {material.kind}
                     </span>
                     <span className="card-num" aria-hidden="true">
@@ -274,7 +271,7 @@ export default async function ProgramPage({ params }: PageProps) {
             </div>
 
             {program.note && (
-              <p className="mt-7 rounded-[18px] border border-[var(--line)] bg-white/58 px-7 py-6 text-[13px] leading-relaxed text-ink-soft">
+              <p className="mt-7 rounded-soft border border-[var(--line)] bg-white/58 px-7 py-6 text-meta leading-relaxed text-ink-soft">
                 <strong className="text-ink">Важно.</strong> {program.note}
               </p>
             )}
@@ -285,16 +282,17 @@ export default async function ProgramPage({ params }: PageProps) {
       {/* --------------------------------------------------- РАБОЧЕЕ ПРОСТРАНСТВО */}
       <section className="section" id="hub">
         <div className="wrap">
-          <div className="mb-12 max-w-[780px]">
+          <div className="mb-12 max-w-195">
             <p className="eyebrow">Сопровождение</p>
             <h2 className="section-title">Рабочее пространство программы</h2>
             <p className="lead">
-              Для участников программы открывается закрытая часть: канал с постами команды
-              и обсуждением, живые опросы прямо во время блоков и материалы по дням.
+              Для участников программы открывается закрытая часть: канал команды, чаты,
+              живые опросы прямо во время блоков, расписание и сборка программы.
+              Вход — по паролю программы.
             </p>
           </div>
 
-          <div className="grid gap-[18px] md:grid-cols-3">
+          <div className="grid gap-4.5 md:grid-cols-3">
             <HubCard
               title="Канал программы"
               text="Посты команды Центра, комментарии участников, реакции, закреплённые сообщения и фотографии."
@@ -304,18 +302,15 @@ export default async function ProgramPage({ params }: PageProps) {
               text="Ведущий запускает вопрос — участники отвечают с телефона. Облако слов, шкалы, квиз с лидербордом."
             />
             <HubCard
-              title="Участники и роли"
-              text="Слушатели, модераторы и администраторы программы. Модераторы ведут обсуждение и помогают с материалами."
+              title="Чаты"
+              text="Общий чат программы, группы по направлениям и личные диалоги участников — с ответами, реакциями и фото."
             />
           </div>
 
           <div className="mt-9 flex flex-wrap items-center gap-4">
-            <ButtonLink href={`/programs/${program.slug}/hub`}>Открыть канал программы</ButtonLink>
-            <ButtonLink href="/join" variant="outline">
-              Как устроен вход
-            </ButtonLink>
-            <p className="m-0 text-[13px] text-ink-faint">
-              Доступ выдаётся персональной ссылкой — её получают слушатели программы.
+            <ButtonLink href={`/programs/${program.slug}/enter`}>Войти в программу</ButtonLink>
+            <p className="m-0 text-meta text-ink-faint">
+              Пароль программы сообщают организаторы. Уже участник — войдите своим паролем.
             </p>
           </div>
         </div>
@@ -331,12 +326,12 @@ export default async function ProgramPage({ params }: PageProps) {
                 <h2 className="m-0 mb-2 font-display text-[clamp(24px,3vw,34px)] leading-tight font-semibold tracking-[-0.035em] text-navy">
                   Авторский одностраничник с итогами
                 </h2>
-                <p className="m-0 max-w-[620px] text-sm leading-relaxed text-ink-soft">
+                <p className="m-0 max-w-155 text-sm leading-relaxed text-ink-soft">
                   Ход программы, ключевые идеи и материалы по дням собраны командой Центра
                   в отдельной странице базы знаний.
                 </p>
                 {program.landing.code && (
-                  <p className="mt-3 mb-0 text-[13px] text-ink-faint">
+                  <p className="mt-3 mb-0 text-meta text-ink-faint">
                     Код доступа для участников:{" "}
                     <b className="tracking-[0.18em] text-ink">{program.landing.code}</b>
                   </p>
@@ -358,7 +353,7 @@ export default async function ProgramPage({ params }: PageProps) {
 function Meta({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
   return (
     <div className={wide ? "col-span-2 md:col-span-2" : undefined}>
-      <dt className="mb-1 text-[12px] tracking-[0.06em] text-ink-faint uppercase">{label}</dt>
+      <dt className="mb-1 text-caption tracking-[0.06em] text-ink-faint uppercase">{label}</dt>
       <dd className="m-0 font-medium text-ink">{value}</dd>
     </div>
   );

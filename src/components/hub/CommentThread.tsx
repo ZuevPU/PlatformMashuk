@@ -5,7 +5,7 @@ import { CornerDownRight } from "lucide-react";
 import { Avatar, RoleBadge } from "./Avatar";
 import { ReactionBar } from "./ReactionBar";
 import { RichText } from "./RichText";
-import { Composer } from "./Composer";
+import { Composer } from "./LazyComposer";
 import type { ComposerPayload } from "./Composer";
 import type { Comment, Member } from "@/lib/types";
 import { formatDateTimeLabel } from "@/lib/dates";
@@ -36,7 +36,7 @@ export function CommentThread({
 }: CommentThreadProps) {
   if (comments.length === 0) {
     return (
-      <p className="m-0 text-[13px] text-ink-faint">
+      <p className="m-0 text-meta text-ink-faint">
         Комментариев пока нет — задайте вопрос первым.
       </p>
     );
@@ -75,9 +75,9 @@ function CommentItem({
         <Avatar member={author} size={isReply ? 30 : 34} />
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex flex-wrap items-center gap-2">
-            <span className="text-[14px] font-semibold text-ink">{author?.name ?? "Участник"}</span>
+            <span className="text-ui font-semibold text-ink">{author?.name ?? "Участник"}</span>
             {author && <RoleBadge role={author.role} />}
-            <span className="text-[12px] text-ink-faint">{formatDateTimeLabel(comment.createdAt)}</span>
+            <span className="text-caption text-ink-faint">{formatDateTimeLabel(comment.createdAt)}</span>
           </div>
 
           <RichText content={comment.body} mentionNames={mentionNames} compact />
@@ -91,7 +91,7 @@ function CommentItem({
             <button
               type="button"
               onClick={() => setReplyOpen((value) => !value)}
-              className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] font-medium text-ink-faint transition-colors duration-200 hover:text-navy"
+              className="inline-flex cursor-pointer items-center gap-1.5 text-caption font-medium text-ink-faint transition-colors duration-200 hover:text-navy"
             >
               <CornerDownRight size={13} />
               Ответить

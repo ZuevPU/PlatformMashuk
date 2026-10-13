@@ -55,10 +55,16 @@ services:
       SENTRY_DSN: ${SENTRY_DSN:-}
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-ru-central1}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      # Ключ для обезличенных ответов в опросах: задайте один раз и не меняйте
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      STORAGE_DIR: /app/storage
     volumes:
       - uploads:/app/public/uploads
+      # Авторские сборки программ: закрыты от посторонних, переживают обновления
+      - storage:/app/storage
     healthcheck:
       test:
         - CMD
@@ -147,6 +153,9 @@ services:
       db:
         condition: service_healthy
     environment:
+      # Сид на рабочем сервере откажется очищать базу без SEED_FORCE=1
+      NODE_ENV: production
+      AUTH_SECRET: ${AUTH_SECRET:-}
       DATABASE_URL: postgres://${POSTGRES_USER:-mashuk}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-mashuk_platform}
     mem_limit: 1024m
     logging: *logging
@@ -154,6 +163,7 @@ services:
 volumes:
   pg_data:
   uploads:
+  storage:
   caddy_data:
   caddy_config:
   prom_data:

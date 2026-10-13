@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { HubApp } from "@/components/hub/HubApp";
+import type { HubSection } from "@/components/hub/HubApp";
+import { ButtonLink } from "@/components/ui/Button";
 import { getProgram } from "@/lib/data";
-import { getHub } from "@/lib/hub";
-import { getPollData } from "@/lib/polls";
-import { getChatData } from "@/lib/chat";
-import { getProgramRole, getSessionUser } from "@/lib/auth";
+import { hasDatabase } from "@/lib/db/client";
+import { getHubAccess, loadHubParts } from "@/lib/hub-data";
 import { formatDateRange, programStatus } from "@/lib/dates";
 
 interface PageProps {
@@ -13,39 +13,35 @@ interface PageProps {
   searchParams: Promise<{ tab?: string }>;
 }
 
-/** Хаб показывает живые данные: сообщения, ответы на опросы, состав. */
+/** Хаб показывает живые данные конкретного участника — страница не кешируется. */
 export const dynamic = "force-dynamic";
+
+const SECTIONS: HubSection[] = ["channel", "schedule", "build", "chats", "members", "polls"];
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const program = await getProgram(slug);
 
   return {
-    title: program ? `Канал программы «${program.title}»` : "Канал программы",
-    description: program
-      ? `Рабочее пространство программы: объявления команды, обсуждение участников и материалы.`
-      : undefined,
+    title: program ? `Рабочее пространство «${program.title}»` : "Рабочее пространство",
+    robots: { index: false, follow: false },
   };
 }
 
 export default async function ProgramHubPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const { tab } = await searchParams;
-  const program = await getProgram(slug);
 
+  if (!hasDatabase()) return <NoDatabase slug={slug} />;
+
+  const program = await getProgram(slug);
   if (!program) notFound();
 
-  const hub = await getHub(program);
-  const polls = await getPollData(program, hub.members);
-  const chat = await getChatData(program, hub.members);
+  // Рабочее пространство закрыто: сначала вход по паролю
+  const access = await getHubAccess(slug);
+  if (!access) redirect(`/programs/${slug}/enter`);
 
-  // Роль берём из сессии: она же определяет права в интерфейсе
-  const user = await getSessionUser();
-  const programRole = user ? await getProgramRole(user.member.id, program.slug) : null;
-  const session =
-    user && programRole
-      ? { memberId: user.member.id, name: user.member.name, role: programRole }
-      : null;
+  const initial = await loadHubParts(access);
 
   return (
     <HubApp
@@ -60,15 +56,31 @@ export default async function ProgramHubPage({ params, searchParams }: PageProps
         location: program.location,
         participants: program.participants,
         materialsCount: program.materials.length,
-        postsCount: hub.posts.length,
+        days: program.days,
+        hasBuild: Boolean(program.hasBuild),
+        landing: program.landing,
       }}
-      hub={hub}
-      polls={polls}
-      chat={chat}
-      session={session}
-      initialSection={
-        tab === "members" ? "members" : tab === "polls" ? "polls" : tab === "chats" ? "chats" : "channel"
-      }
+      initial={initial}
+      session={{ memberId: access.memberId, name: access.name, role: access.role }}
+      initialSection={SECTIONS.includes(tab as HubSection) ? (tab as HubSection) : "channel"}
     />
+  );
+}
+
+function NoDatabase({ slug }: { slug: string }) {
+  return (
+    <section className="section">
+      <div className="wrap max-w-190">
+        <p className="eyebrow">Рабочее пространство</p>
+        <h1 className="section-title">Нужна база данных</h1>
+        <p className="lead mb-8">
+          Канал, чаты и опросы хранятся в базе и доступны участникам по паролю.
+          Подключите PostgreSQL (переменная DATABASE_URL) — инструкция в ЗАПУСК.md.
+        </p>
+        <ButtonLink href={`/programs/${slug}`} variant="outline">
+          К странице программы
+        </ButtonLink>
+      </div>
+    </section>
   );
 }

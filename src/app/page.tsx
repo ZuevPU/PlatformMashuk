@@ -7,7 +7,7 @@ import { StatusChip } from "@/components/programs/StatusChip";
 import { getShowcaseStats, getAllPrograms, filterPrograms } from "@/lib/data";
 import { DIRECTIONS } from "@/lib/types";
 import type { DirectionKey, ProgramStatus, SeasonKey } from "@/lib/types";
-import { SEASONS, SEASON_ORDER, ICONS } from "@/lib/brand";
+import { SEASONS, SEASON_ORDER, ICONS, seasonStyle } from "@/lib/brand";
 import { durationDays, formatDateRange, plural } from "@/lib/dates";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -97,14 +97,14 @@ export default async function HomePage({
   return (
     <>
       {/* ---------------------------------------------------------------- HERO */}
-      <section className="mesh relative min-h-[640px] pt-[104px] pb-[92px]">
+      <section className="mesh relative min-h-160 pt-26 pb-23">
         <div className="wrap relative">
           <p className="eyebrow eyebrow--light">Экосистема сопровождения слушателей</p>
-          <h1 className="m-0 mb-7 max-w-[860px] font-display text-[clamp(44px,7.5vw,104px)] leading-[0.92] font-semibold tracking-[-0.07em] text-white">
+          <h1 className="m-0 mb-7 max-w-215 font-display text-[clamp(44px,7.5vw,104px)] leading-[0.92] font-semibold tracking-[-0.07em] text-white">
             Программы
             <span className="block text-sky-light">Центра знаний «Машук»</span>
           </h1>
-          <p className="lead lead--light mb-10 max-w-[720px]">
+          <p className="lead lead--light mb-10 max-w-180">
             Программы, материалы, общение участников и живая обратная связь — в одной среде.
             Витрина открыта всем, рабочее пространство программы — для её участников.
           </p>
@@ -136,13 +136,13 @@ export default async function HomePage({
                 <p className="eyebrow">Прямо сейчас</p>
                 <h2 className="section-title section-title--tight">Идут и готовятся к старту</h2>
               </div>
-              <p className="m-0 max-w-[380px] text-sm leading-relaxed text-ink-soft">
+              <p className="m-0 max-w-95 text-sm leading-relaxed text-ink-soft">
                 Каждые несколько дней в Центре стартует новая программа. Здесь — те, что идут
                 сейчас или открыты для участников.
               </p>
             </div>
 
-            <div className="grid gap-[18px] md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4.5 md:grid-cols-2 xl:grid-cols-3">
               {[...live, ...recruiting].slice(0, 3).map((program) => (
                 <ProgramCard key={program.slug} program={program} />
               ))}
@@ -160,7 +160,7 @@ export default async function HomePage({
               <h2 className="section-title section-title--tight">Все программы</h2>
             </div>
 
-            <form action="/" method="get" className="flex w-full max-w-[380px] gap-2">
+            <form action="/" method="get" className="flex w-full max-w-95 gap-2">
               {filters.status !== "all" && (
                 <input type="hidden" name="status" value={filters.status} />
               )}
@@ -176,7 +176,7 @@ export default async function HomePage({
                 defaultValue={filters.query}
                 placeholder="Поиск по названию или описанию"
                 aria-label="Поиск программ"
-                className="min-h-12 w-full rounded-full border border-[var(--line)] bg-white px-5 text-sm text-ink outline-none transition-colors duration-200 focus:border-navy"
+                className="min-h-12 w-full rounded-full border border-[var(--line)] bg-white px-5 text-sm text-ink outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy transition-colors duration-200 focus:border-navy"
               />
               <button
                 type="submit"
@@ -241,7 +241,7 @@ export default async function HomePage({
           </div>
 
           {filtered.length > 0 ? (
-            <div className="grid gap-[18px] md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4.5 md:grid-cols-2 xl:grid-cols-3">
               {filtered.map((program) => (
                 <ProgramCard key={program.slug} program={program} />
               ))}
@@ -252,7 +252,7 @@ export default async function HomePage({
               <h3 className="m-0 font-display text-2xl font-semibold tracking-[-0.03em] text-navy">
                 Под эти условия программ нет
               </h3>
-              <p className="m-0 max-w-[560px] text-sm leading-relaxed text-ink-soft">
+              <p className="m-0 max-w-140 text-sm leading-relaxed text-ink-soft">
                 Попробуйте изменить фильтры или сбросить поиск — в каталоге{" "}
                 {stats.programs} программ, включая архив с итогами.
               </p>
@@ -267,7 +267,7 @@ export default async function HomePage({
       {/* ---------------------------------------------------------- КАК РАБОТАЕТ */}
       <section className="section bg-sky-pale" id="how">
         <div className="wrap">
-          <div className="mb-12 max-w-[780px]">
+          <div className="mb-12 max-w-195">
             <p className="eyebrow">Как это работает</p>
             <h2 className="section-title">Экосистема вокруг программы</h2>
             <p className="lead">
@@ -277,7 +277,7 @@ export default async function HomePage({
             </p>
           </div>
 
-          <div className="grid gap-[18px] md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4.5 md:grid-cols-2 xl:grid-cols-4">
             {HOW_IT_WORKS.map((item) => (
               <article key={item.title} className="card card--hover p-7">
                 {/* eslint-disable-next-line @next/next/no-img-element -- фирменный SVG-набор */}
@@ -301,7 +301,7 @@ export default async function HomePage({
                 <p className="eyebrow">Архив</p>
                 <h2 className="section-title section-title--tight">Итоги прошедших программ</h2>
               </div>
-              <p className="m-0 max-w-[400px] text-sm leading-relaxed text-ink-soft">
+              <p className="m-0 max-w-100 text-sm leading-relaxed text-ink-soft">
                 После каждой программы команда Центра собирает авторский одностраничник с
                 итогами, ходом программы и материалами по дням.
               </p>
@@ -313,34 +313,29 @@ export default async function HomePage({
                   key={program.slug}
                   data-season={program.season}
                   className="card flex-col items-start gap-5 p-6 md:flex-row md:items-center md:gap-7"
-                  style={
-                    {
-                      "--accent": SEASONS[program.season].accent,
-                      "--accent-strong": SEASONS[program.season].strong,
-                    } as CSSProperties
-                  }
+                  style={seasonStyle(program.season) as CSSProperties}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="mb-2 flex flex-wrap items-center gap-3">
                       <StatusChip status={program.status} />
-                      <span className="text-[12px] text-ink-faint">
+                      <span className="text-caption text-ink-faint">
                         {formatDateRange(program.startDate, program.endDate)}
                       </span>
-                      <span className="text-[12px] text-ink-faint">
+                      <span className="text-caption text-ink-faint">
                         {durationDays(program.startDate, program.endDate)} дн.
                       </span>
                       {program.participants && (
-                        <span className="text-[12px] text-ink-faint">
+                        <span className="text-caption text-ink-faint">
                           {program.participants} участников
                         </span>
                       )}
                     </div>
-                    <h3 className="m-0 mb-1 font-display text-[22px] leading-tight font-semibold tracking-[-0.03em] text-navy">
+                    <h3 className="m-0 mb-1 font-display text-title leading-tight font-semibold tracking-[-0.03em] text-navy">
                       <Link href={`/programs/${program.slug}`} className="no-underline hover:underline">
                         {program.title}
                       </Link>
                     </h3>
-                    <p className="m-0 text-[13px] text-ink-soft">
+                    <p className="m-0 text-meta text-ink-soft">
                       {program.subtitle}
                       {program.stream ? ` · ${program.stream}` : ""}
                     </p>
@@ -368,11 +363,11 @@ export default async function HomePage({
 
 function Fact({ value, label }: { value: string; label: string }) {
   return (
-    <div className="glass px-5 py-[18px]">
-      <b className="mb-1.5 block font-display text-[23px] font-semibold tracking-[-0.02em] text-white">
+    <div className="glass px-5 py-4.5">
+      <b className="mb-1.5 block font-display text-title font-semibold tracking-[-0.02em] text-white">
         {value}
       </b>
-      <span className="text-[13px] leading-snug text-white/72">{label}</span>
+      <span className="text-meta leading-snug text-white/72">{label}</span>
     </div>
   );
 }
@@ -380,7 +375,7 @@ function Fact({ value, label }: { value: string; label: string }) {
 function FilterRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="mr-1 w-[104px] shrink-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-gold">
+      <span className="mr-1 w-26 shrink-0 text-micro font-semibold uppercase tracking-[0.14em] text-gold-ink">
         {label}
       </span>
       {children}
@@ -401,7 +396,7 @@ function FilterPill({
     <Link
       href={href}
       className={[
-        "inline-flex min-h-9 items-center gap-2 rounded-full border px-3.5 text-[13px] font-medium no-underline transition-all duration-200 ease-brand",
+        "inline-flex min-h-9 items-center gap-2 rounded-full border px-3.5 text-meta font-medium no-underline transition-all duration-200 ease-brand",
         active
           ? "border-navy bg-navy text-white"
           : "border-[var(--line)] bg-white text-navy hover:-translate-y-0.5",

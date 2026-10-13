@@ -9,9 +9,9 @@ export type { ProgramView };
 /**
  * Слой доступа к данным программ.
  *
- * Если задана переменная DATABASE_URL, данные читаются из PostgreSQL.
- * Если базы нет — используется демонстрационный набор из `mock/programs`.
- * Интерфейс страниц в обоих случаях одинаковый.
+ * Если задана переменная DATABASE_URL, данные читаются только из PostgreSQL:
+ * программами управляют из админки. Без базы витрина показывает
+ * демонстрационный набор из `mock/programs`.
  */
 
 function toView(program: Program): ProgramView {
@@ -29,18 +29,11 @@ function mockPrograms(): ProgramView[] {
 }
 
 export async function getAllPrograms(): Promise<ProgramView[]> {
-  if (hasDatabase()) {
-    const rows = await loadPrograms();
-    if (rows.length > 0) return rows;
-  }
-  return mockPrograms();
+  return hasDatabase() ? loadPrograms() : mockPrograms();
 }
 
 export async function getProgram(slug: string): Promise<ProgramView | undefined> {
-  if (hasDatabase()) {
-    const row = await loadProgram(slug);
-    if (row) return row;
-  }
+  if (hasDatabase()) return loadProgram(slug);
   const found = PROGRAMS.find((program) => program.slug === slug);
   return found ? toView(found) : undefined;
 }

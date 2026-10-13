@@ -1,20 +1,18 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { hasDatabase } from "@/lib/db/client";
-import { saveUpload, validateImage } from "@/lib/storage";
+import { UploadError, saveUpload, validateImage } from "@/lib/storage";
 
 /**
  * Загрузка фотографии.
  *
- * В режиме с базой загружать может только вошедший участник; в демонстрационном
- * режиме вход не требуется, чтобы платформу можно было смотреть без настройки.
+ * Загружать может только вошедший участник: фото нужны в канале и чатах,
+ * которые работают с базой данных.
  */
 export async function POST(request: Request) {
-  if (hasDatabase()) {
-    const user = await getSessionUser();
-    if (!user) {
-      return NextResponse.json({ ok: false, error: "Нужно войти по приглашению" }, { status: 401 });
-    }
+  const user = hasDatabase() ? await getSessionUser() : null;
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "Войдите в программу, чтобы загрузить фото" }, { status: 401 });
   }
 
   const form = await request.formData().catch(() => null);
@@ -37,9 +35,11 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ ok: true, url: saved.url, size: saved.size });
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Не удалось сохранить файл" },
-      { status: 500 },
-    );
+    if (error instanceof UploadError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+    }
+    // Подробности ошибки хранилища — в лог сервера, пользователю — понятный текст
+    console.error("upload:", error);
+    return NextResponse.json({ ok: false, error: "Не удалось сохранить файл" }, { status: 500 });
   }
 }

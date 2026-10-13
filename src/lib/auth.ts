@@ -1,44 +1,67 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
-import { randomInt, randomUUID } from "node:crypto";
-import { and, asc, eq, gt, ne } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
+import { and, asc, eq, gt, lt } from "drizzle-orm";
 import { getDb, schema } from "./db/client";
+import { verifyPassword } from "./password";
 import type { Member, MemberRole } from "./types";
 
 /**
- * Вход по приглашению: персональная ссылка, код на почту или код в SMS.
+ * Вход и сессии.
  *
- * Паролей нет. В браузере лежит только непрозрачный токен сессии,
- * все данные о пользователе — на сервере.
+ * Участник входит по личному логину (почта или телефон) и паролю. Новый
+ * участник попадает в программу по паролю программы и сам задаёт личный
+ * пароль — см. auth-actions.ts. В браузере лежит только непрозрачный токен
+ * сессии в httpOnly-cookie, все данные о пользователе — на сервере.
  */
 
 export const SESSION_COOKIE = "mashuk_session";
+
 const SESSION_DAYS = 30;
-const CODE_TTL_MINUTES = 20;
-const INVITE_TTL_DAYS = 60;
 
 export interface SessionUser {
   member: Member;
-  /** Программы участника и его роль в каждой */
-  programs: { slug: string; role: MemberRole }[];
+  /** Администратор Центра: видит все программы и управляет ими */
+  isCenterAdmin: boolean;
 }
 
 function newToken(): string {
-  return randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "").slice(0, 16);
-}
-
-function code(): string {
-  return String(randomInt(100000, 999999));
+  return randomBytes(32).toString("base64url");
 }
 
 function inDays(days: number): Date {
   return new Date(Date.now() + days * 86_400_000);
 }
 
+/**
+ * Логин в едином виде: почта — строчными буквами, телефон — +7XXXXXXXXXX.
+ * Возвращает null, если строка не похожа ни на почту, ни на телефон.
+ */
+export function normalizeContact(raw: string): string | null {
+  const value = raw.trim().toLowerCase();
+  if (!value) return null;
+  if (value.includes("@")) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 200 ? value : null;
+  }
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 11 && (digits.startsWith("8") || digits.startsWith("7"))) {
+    return `+7${digits.slice(1)}`;
+  }
+  if (digits.length === 10) return `+7${digits}`;
+  if (digits.length >= 11 && digits.length <= 15 && value.startsWith("+")) return `+${digits}`;
+  return null;
+}
+
 /* --- Сессии -------------------------------------------------------------- */
 
-export async function createSession(memberId: string, userAgent?: string): Promise<string> {
+export async function createSession(memberId: string, userAgent?: string): Promise<void> {
   const db = getDb();
   if (!db) throw new Error("База данных не подключена");
+
+  // Прежний вход в этом браузере закрываем: в базе не остаётся «висящих» сессий
+  const store = await cookies();
+  const previous = store.get(SESSION_COOKIE)?.value;
+  if (previous) await db.delete(schema.authSessions).where(eq(schema.authSessions.token, previous));
 
   const token = newToken();
   await db.insert(schema.authSessions).values({
@@ -48,7 +71,13 @@ export async function createSession(memberId: string, userAgent?: string): Promi
     userAgent: userAgent?.slice(0, 250) ?? null,
   });
 
-  const store = await cookies();
+  // Попутно убираем истёкшие сессии этого человека
+  await db
+    .delete(schema.authSessions)
+    .where(
+      and(eq(schema.authSessions.memberId, memberId), lt(schema.authSessions.expiresAt, new Date())),
+    );
+
   store.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
@@ -59,11 +88,10 @@ export async function createSession(memberId: string, userAgent?: string): Promi
     path: "/",
     maxAge: SESSION_DAYS * 86_400,
   });
-
-  return token;
 }
 
-export async function getSessionUser(): Promise<SessionUser | null> {
+/** Текущий пользователь. Кешируется на время запроса: страница и действия зовут её много раз. */
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const db = getDb();
   if (!db) return null;
 
@@ -97,30 +125,45 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       org: row.org ?? undefined,
       city: row.city ?? undefined,
     },
-    programs: [],
+    isCenterAdmin: row.role === "admin",
   };
-}
+});
 
-/** Роль участника в конкретной программе — источник прав в интерфейсе. */
-export async function getProgramRole(
-  memberId: string,
+/**
+ * Роль участника в конкретной программе — источник прав.
+ * Администратор Центра — администратор любой программы.
+ */
+export const getProgramRole = cache(
+  async (memberId: string, programSlug: string): Promise<MemberRole | null> => {
+    const db = getDb();
+    if (!db) return null;
+
+    const [row] = await db
+      .select({ role: schema.programMembers.role })
+      .from(schema.programMembers)
+      .innerJoin(schema.programs, eq(schema.programs.id, schema.programMembers.programId))
+      .where(
+        and(
+          eq(schema.programMembers.memberId, memberId),
+          eq(schema.programs.slug, programSlug),
+        ),
+      );
+
+    if (row) return row.role;
+
+    const user = await getSessionUser();
+    return user?.member.id === memberId && user.isCenterAdmin ? "admin" : null;
+  },
+);
+
+/** Кто смотрит программу и с какой ролью; null — доступа нет. */
+export async function getViewer(
   programSlug: string,
-): Promise<MemberRole | null> {
-  const db = getDb();
-  if (!db) return null;
-
-  const [row] = await db
-    .select({ role: schema.programMembers.role })
-    .from(schema.programMembers)
-    .innerJoin(schema.programs, eq(schema.programs.id, schema.programMembers.programId))
-    .where(
-      and(
-        eq(schema.programMembers.memberId, memberId),
-        eq(schema.programs.slug, programSlug),
-      ),
-    );
-
-  return row?.role ?? null;
+): Promise<{ user: SessionUser; role: MemberRole } | null> {
+  const user = await getSessionUser();
+  if (!user) return null;
+  const role = await getProgramRole(user.member.id, programSlug);
+  return role ? { user, role } : null;
 }
 
 export async function destroySession(): Promise<void> {
@@ -134,154 +177,42 @@ export async function destroySession(): Promise<void> {
   store.delete(SESSION_COOKIE);
 }
 
-/* --- Приглашения --------------------------------------------------------- */
-
-export async function createInvite(input: {
-  programId: number;
-  memberId: string;
-  channel: "link" | "email" | "sms";
-  contact?: string;
-}): Promise<string> {
+/** Удаляет все сессии человека: после смены пароля старые входы перестают работать. */
+export async function destroyMemberSessions(memberId: string): Promise<void> {
   const db = getDb();
-  if (!db) throw new Error("База данных не подключена");
-
-  const token = newToken();
-  await db.insert(schema.invites).values({
-    token,
-    programId: input.programId,
-    memberId: input.memberId,
-    channel: input.channel,
-    contact: input.contact ?? null,
-    expiresAt: inDays(INVITE_TTL_DAYS),
-  });
-
-  return token;
+  if (!db) return;
+  await db.delete(schema.authSessions).where(eq(schema.authSessions.memberId, memberId));
 }
 
-export interface InviteResult {
-  memberId: string;
-  programSlug: string;
-  programTitle: string;
-}
+/* --- Проверка пароля ----------------------------------------------------- */
 
-/** Первая программа участника — куда вести после входа. */
-async function firstProgramForMember(memberId: string): Promise<InviteResult | null> {
+/** Проверка личного логина и пароля. Время ответа не зависит от того, есть ли такой логин. */
+export async function authenticate(contact: string, password: string): Promise<string | null> {
   const db = getDb();
   if (!db) return null;
 
   const [row] = await db
-    .select({ programSlug: schema.programs.slug, programTitle: schema.programs.title })
+    .select({ id: schema.members.id, passwordHash: schema.members.passwordHash })
+    .from(schema.members)
+    .where(eq(schema.members.contact, contact));
+
+  const ok = await verifyPassword(password, row?.passwordHash ?? null);
+  return ok && row ? row.id : null;
+}
+
+/** Куда вести после входа: администратора — в админку, участника — в его ближайшую программу. */
+export async function homeFor(memberId: string, isCenterAdmin: boolean): Promise<string> {
+  if (isCenterAdmin) return "/admin";
+  const db = getDb();
+  if (!db) return "/";
+
+  const [row] = await db
+    .select({ slug: schema.programs.slug })
     .from(schema.programMembers)
     .innerJoin(schema.programs, eq(schema.programs.id, schema.programMembers.programId))
     .where(eq(schema.programMembers.memberId, memberId))
     .orderBy(asc(schema.programs.startDate))
     .limit(1);
 
-  if (!row) return null;
-  return { memberId, programSlug: row.programSlug, programTitle: row.programTitle };
-}
-
-/** Открытие персональной ссылки: приглашение помечается использованным. */
-export async function acceptInviteToken(token: string): Promise<InviteResult | null> {
-  const db = getDb();
-  if (!db) return null;
-
-  const [row] = await db
-    .select({
-      memberId: schema.invites.memberId,
-      status: schema.invites.status,
-      expiresAt: schema.invites.expiresAt,
-      programSlug: schema.programs.slug,
-      programTitle: schema.programs.title,
-    })
-    .from(schema.invites)
-    .leftJoin(schema.programs, eq(schema.programs.id, schema.invites.programId))
-    .where(eq(schema.invites.token, token));
-
-  if (!row) return null;
-  if (row.status === "revoked") return null;
-  if (row.expiresAt.getTime() < Date.now()) return null;
-
-  await db
-    .update(schema.invites)
-    .set({ status: "used", usedAt: new Date() })
-    .where(eq(schema.invites.token, token));
-
-  if (row.programSlug && row.programTitle) {
-    return { memberId: row.memberId, programSlug: row.programSlug, programTitle: row.programTitle };
-  }
-
-  return firstProgramForMember(row.memberId);
-}
-
-/**
- * Запрос кода на почту или телефон.
- *
- * Провайдер рассылки подключается отдельно: пока код возвращается в ответе
- * только вне production, чтобы вход можно было проверить без почтового сервиса.
- */
-export async function requestLoginCode(
-  contact: string,
-): Promise<{ ok: boolean; devCode?: string; reason?: string }> {
-  const db = getDb();
-  if (!db) return { ok: false, reason: "База данных не подключена" };
-
-  const normalized = contact.trim().toLowerCase();
-  if (!normalized) return { ok: false, reason: "Укажите почту или телефон" };
-
-  const [row] = await db
-    .select({ token: schema.invites.token, memberId: schema.invites.memberId })
-    .from(schema.invites)
-    .where(
-      and(eq(schema.invites.contact, normalized), ne(schema.invites.status, "revoked")),
-    )
-    .limit(1);
-
-  if (!row) {
-    return { ok: false, reason: "Приглашение для этого адреса не найдено" };
-  }
-
-  const value = code();
-  await db
-    .update(schema.invites)
-    .set({ code: value, channel: normalized.includes("@") ? "email" : "sms" })
-    .where(eq(schema.invites.token, row.token));
-
-  return {
-    ok: true,
-    devCode: process.env.NODE_ENV === "production" ? undefined : value,
-  };
-}
-
-/** Проверка кода и выдача сессии. */
-export async function verifyLoginCode(
-  contact: string,
-  value: string,
-): Promise<{ memberId: string } | null> {
-  const db = getDb();
-  if (!db) return null;
-
-  const normalized = contact.trim().toLowerCase();
-  const [row] = await db
-    .select({
-      token: schema.invites.token,
-      memberId: schema.invites.memberId,
-      code: schema.invites.code,
-      createdAt: schema.invites.createdAt,
-    })
-    .from(schema.invites)
-    .where(and(eq(schema.invites.contact, normalized), eq(schema.invites.code, value.trim())))
-    .limit(1);
-
-  if (!row) return null;
-  if (Date.now() - row.createdAt.getTime() > CODE_TTL_MINUTES * 60_000) return null;
-
-  // Код одноразовый, но приглашение остаётся действующим: участник может
-  // потерять сессию и запросить новый код — статус при этом не сжигается.
-  await db
-    .update(schema.invites)
-    .set({ code: null, usedAt: new Date() })
-    .where(eq(schema.invites.token, row.token));
-
-  return { memberId: row.memberId };
+  return row ? `/programs/${row.slug}/hub` : "/";
 }

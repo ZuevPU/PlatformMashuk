@@ -140,7 +140,7 @@ export function PollBuilder({
             <h2 className="m-0 font-display text-[clamp(22px,2.8vw,30px)] leading-tight font-semibold tracking-[-0.035em] text-navy">
               Шаблон или опрос с нуля
             </h2>
-            <p className="m-0 mt-2 max-w-[560px] text-[13px] leading-relaxed text-ink-soft">
+            <p className="m-0 mt-2 max-w-140 text-meta leading-relaxed text-ink-soft">
               Готовые шаблоны уже собраны под типовые ситуации программы. Любой из них можно
               изменить под себя — вопросы, варианты и настройки останутся вашими.
             </p>
@@ -157,19 +157,19 @@ export function PollBuilder({
               key={template.key}
               type="button"
               onClick={() => applyTemplate(template)}
-              className="cursor-pointer rounded-[20px] border border-[var(--line)] bg-white p-5 text-left transition-all duration-200 ease-brand hover:-translate-y-1 hover:shadow-[var(--shadow-brand)]"
+              className="cursor-pointer rounded-panel border border-[var(--line)] bg-white p-5 text-left transition-all duration-200 ease-brand hover:-translate-y-1 hover:shadow-[var(--shadow-brand)]"
             >
               <div className="mb-3 flex items-center justify-between gap-3">
                 <span className="tag">{template.purpose}</span>
                 <BookTemplate size={16} className="text-ink-faint" />
               </div>
-              <h3 className="m-0 mb-2 font-display text-[17px] leading-snug font-semibold tracking-[-0.02em] text-navy">
+              <h3 className="m-0 mb-2 font-display text-lead leading-snug font-semibold tracking-[-0.02em] text-navy">
                 {template.title}
               </h3>
-              <p className="m-0 text-[13px] leading-relaxed text-ink-soft">
+              <p className="m-0 text-meta leading-relaxed text-ink-soft">
                 {template.description}
               </p>
-              <p className="m-0 mt-3 text-[11px] text-ink-faint">
+              <p className="m-0 mt-3 text-micro text-ink-faint">
                 {template.questions.length}{" "}
                 {template.questions.length === 1 ? "вопрос" : "вопроса"} ·{" "}
                 {template.anonymous ? "анонимный" : "с именами"} ·{" "}
@@ -181,16 +181,16 @@ export function PollBuilder({
           <button
             type="button"
             onClick={startEmpty}
-            className="cursor-pointer rounded-[20px] border border-dashed border-[var(--line)] bg-white/60 p-5 text-left transition-all duration-200 ease-brand hover:-translate-y-1 hover:border-navy"
+            className="cursor-pointer rounded-panel border border-dashed border-[var(--line)] bg-white/60 p-5 text-left transition-all duration-200 ease-brand hover:-translate-y-1 hover:border-navy"
           >
             <div className="mb-3 flex items-center justify-between gap-3">
               <span className="tag">С нуля</span>
               <FilePlus2 size={16} className="text-ink-faint" />
             </div>
-            <h3 className="m-0 mb-2 font-display text-[17px] leading-snug font-semibold tracking-[-0.02em] text-navy">
+            <h3 className="m-0 mb-2 font-display text-lead leading-snug font-semibold tracking-[-0.02em] text-navy">
               Свой опрос
             </h3>
-            <p className="m-0 text-[13px] leading-relaxed text-ink-soft">
+            <p className="m-0 text-meta leading-relaxed text-ink-soft">
               Пустой опрос: добавляйте вопросы любого типа и настраивайте показ результатов.
             </p>
           </button>
@@ -243,16 +243,16 @@ export function PollBuilder({
           </label>
         </div>
 
-        <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-[16px] border border-[var(--line)] p-4">
+        <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--line)] p-4">
           <input
             type="checkbox"
             checked={anonymous}
             onChange={(event) => setAnonymous(event.target.checked)}
-            className="mt-0.5 size-4 accent-[#223F9A]"
+            className="mt-0.5 size-4 accent-navy"
           />
           <span>
-            <span className="block text-[14px] font-medium text-ink">Анонимные ответы</span>
-            <span className="block text-[12px] leading-relaxed text-ink-faint">
+            <span className="block text-ui font-medium text-ink">Анонимные ответы</span>
+            <span className="block text-caption leading-relaxed text-ink-faint">
               Ведущий видит только сводку, без имён. Для квиза недоступно: лидерборд требует имён.
             </span>
           </span>
@@ -262,7 +262,7 @@ export function PollBuilder({
       {questions.map((question, index) => (
         <article key={question.id} className="card p-6">
           <div className="mb-4 flex flex-wrap items-center gap-3">
-            <span className="font-display text-[13px] font-semibold tracking-[0.12em] text-gold uppercase">
+            <span className="font-display text-meta font-semibold tracking-[0.12em] text-gold-ink uppercase">
               Вопрос {index + 1}
             </span>
 
@@ -278,7 +278,7 @@ export function PollBuilder({
                   hint: question.hint,
                 });
               }}
-              className="min-h-9 cursor-pointer rounded-full border border-[var(--line)] bg-white px-3 text-[12px] font-semibold text-navy outline-none"
+              className="min-h-9 cursor-pointer rounded-full border border-[var(--line)] bg-white px-3 text-caption font-semibold text-navy outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
             >
               {KINDS.map((kind) => (
                 <option key={kind} value={kind}>
@@ -287,7 +287,7 @@ export function PollBuilder({
               ))}
             </select>
 
-            <span className="text-[12px] text-ink-faint">{QUESTION_KIND_HINTS[question.kind]}</span>
+            <span className="text-caption text-ink-faint">{QUESTION_KIND_HINTS[question.kind]}</span>
 
             <div className="ml-auto flex gap-1.5">
               <button
@@ -356,7 +356,7 @@ export function PollBuilder({
                       className={[
                         "grid size-8 shrink-0 cursor-pointer place-items-center rounded-full border transition-colors duration-200",
                         option.correct
-                          ? "border-transparent bg-[#0B4D4D] text-white"
+                          ? "border-transparent bg-teal text-white"
                           : "border-[var(--line)] bg-white text-ink-faint",
                       ].join(" ")}
                     >
@@ -449,7 +449,7 @@ export function PollBuilder({
                   type="button"
                   onClick={() => updateQuestion(index, { visual })}
                   className={[
-                    "min-h-9 cursor-pointer rounded-full border px-3.5 text-[12px] font-semibold transition-all duration-200 ease-brand",
+                    "min-h-9 cursor-pointer rounded-full border px-3.5 text-caption font-semibold transition-all duration-200 ease-brand",
                     question.visual === visual
                       ? "border-navy bg-navy text-white"
                       : "border-[var(--line)] bg-white text-navy hover:-translate-y-0.5",
@@ -504,7 +504,7 @@ export function PollBuilder({
           Добавить вопрос
         </button>
 
-        <span className="text-[12px] text-ink-faint">
+        <span className="text-caption text-ink-faint">
           {questions.length}{" "}
           {questions.length === 1 ? "вопрос" : questions.length < 5 ? "вопроса" : "вопросов"} ·
           сохранение создаст черновик сессии
@@ -514,7 +514,7 @@ export function PollBuilder({
           type="button"
           onClick={save}
           disabled={!canSave}
-          className="ml-auto inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-navy px-5 text-[14px] font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep disabled:cursor-not-allowed disabled:opacity-40"
+          className="ml-auto inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-navy px-5 text-ui font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Save size={15} />
           Сохранить опрос
@@ -525,9 +525,9 @@ export function PollBuilder({
 }
 
 const inputClass =
-  "min-h-11 w-full rounded-[14px] border border-[var(--line)] bg-white px-4 text-[14px] text-ink outline-none transition-colors duration-200 focus:border-navy";
-const labelClass = "text-[12px] font-semibold tracking-[0.06em] text-ink-faint uppercase";
+  "min-h-11 w-full rounded-field border border-[var(--line)] bg-white px-4 text-ui text-ink outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy transition-colors duration-200 focus:border-navy";
+const labelClass = "text-caption font-semibold tracking-[0.06em] text-ink-faint uppercase";
 const ghostButton =
-  "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3.5 text-[12px] font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5";
+  "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3.5 text-caption font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5";
 const iconButton =
   "grid size-8 cursor-pointer place-items-center rounded-full border border-[var(--line)] bg-white text-ink-faint transition-colors duration-200 hover:text-navy disabled:cursor-not-allowed disabled:opacity-40";

@@ -14,7 +14,7 @@ interface ReactionBarProps {
 export function ReactionBar({ reactions, onToggle, compact = false }: ReactionBarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const size = compact ? 12 : 14;
-  const padding = compact ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-[12px]";
+  const padding = compact ? "px-2 py-0.5 text-micro" : "px-2.5 py-1 text-caption";
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -35,7 +35,7 @@ export function ReactionBar({ reactions, onToggle, compact = false }: ReactionBa
             reaction.mine
               ? {
                   background: "color-mix(in oklab, var(--accent) 12%, white)",
-                  color: "color-mix(in oklab, var(--accent) 62%, #0a1014)",
+                  color: "var(--accent-ink)",
                 }
               : undefined
           }
@@ -65,7 +65,7 @@ export function ReactionBar({ reactions, onToggle, compact = false }: ReactionBa
                   onToggle(emoji);
                   setPickerOpen(false);
                 }}
-                className="cursor-pointer rounded-full px-1.5 py-1 text-[16px] transition-transform duration-150 hover:scale-125"
+                className="cursor-pointer rounded-full px-1.5 py-1 text-lead transition-transform duration-150 hover:scale-125"
               >
                 {emoji}
               </button>

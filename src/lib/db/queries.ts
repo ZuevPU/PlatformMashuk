@@ -1,13 +1,14 @@
+import { cache } from "react";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb, schema } from "./client";
 import { toMoscowIso, programSeason, programStatus } from "../dates";
-import { POLL_TEMPLATES } from "../mock/polls";
+import { POLL_TEMPLATES } from "../poll-templates";
+import { respondentKey } from "../respondent";
 import type {
   ChatData,
   ChatMessage,
   Comment,
   Conversation,
-  HubData,
   Member,
   Poll,
   PollData,
@@ -21,15 +22,23 @@ import type {
 /**
  * Чтение данных из PostgreSQL.
  *
- * Функции возвращают ровно те же структуры, что и демонстрационные модули,
- * поэтому компоненты интерфейса не знают, откуда пришли данные.
+ * Данные хаба всегда читаются от имени конкретного человека (viewer):
+ * он получает только свои беседы, видит свои реакции и знает, на какие
+ * вопросы опроса уже ответил. Ничего лишнего в браузер не уходит.
  */
+
+export interface Viewer {
+  id: string;
+  /** Команда программы: администратор или модератор */
+  staff: boolean;
+}
 
 /* --- Реакции ------------------------------------------------------------- */
 
 async function loadReactions(
   targetType: "post" | "comment" | "message",
   targetIds: string[],
+  viewerId: string,
 ): Promise<Map<string, ReactionSummary[]>> {
   const db = getDb();
   const map = new Map<string, ReactionSummary[]>();
@@ -40,6 +49,7 @@ async function loadReactions(
       targetId: schema.reactions.targetId,
       emoji: schema.reactions.emoji,
       total: sql<number>`count(*)::int`,
+      mine: sql<boolean>`bool_or(${schema.reactions.memberId} = ${viewerId})`,
     })
     .from(schema.reactions)
     .where(
@@ -52,10 +62,9 @@ async function loadReactions(
 
   for (const row of rows) {
     const list = map.get(row.targetId) ?? [];
-    list.push({ emoji: row.emoji, count: Number(row.total), mine: false });
+    list.push({ emoji: row.emoji, count: Number(row.total), mine: Boolean(row.mine) });
     map.set(row.targetId, list);
   }
-
   for (const list of map.values()) list.sort((a, b) => b.count - a.count);
   return map;
 }
@@ -71,17 +80,22 @@ async function loadProgramTree(slug?: string): Promise<ProgramView[]> {
     : await db.select().from(schema.programs).orderBy(desc(schema.programs.startDate));
 
   if (programRows.length === 0) return [];
-
   const ids = programRows.map((row) => row.id);
 
-  const dayRows = await db
-    .select()
-    .from(schema.programDays)
-    .where(inArray(schema.programDays.programId, ids))
-    .orderBy(asc(schema.programDays.day));
+  const [dayRows, materialRows] = await Promise.all([
+    db
+      .select()
+      .from(schema.programDays)
+      .where(inArray(schema.programDays.programId, ids))
+      .orderBy(asc(schema.programDays.day)),
+    db
+      .select()
+      .from(schema.programMaterials)
+      .where(inArray(schema.programMaterials.programId, ids))
+      .orderBy(asc(schema.programMaterials.day), asc(schema.programMaterials.id)),
+  ]);
 
   const dayIds = dayRows.map((row) => row.id);
-
   const slotRows = dayIds.length
     ? await db
         .select()
@@ -89,11 +103,6 @@ async function loadProgramTree(slug?: string): Promise<ProgramView[]> {
         .where(inArray(schema.programSlots.dayId, dayIds))
         .orderBy(asc(schema.programSlots.position))
     : [];
-
-  const materialRows = await db
-    .select()
-    .from(schema.programMaterials)
-    .where(inArray(schema.programMaterials.programId, ids));
 
   return programRows.map((row) => {
     const days = dayRows
@@ -150,6 +159,7 @@ async function loadProgramTree(slug?: string): Promise<ProgramView[]> {
         : undefined,
       driveFolder: row.driveFolder ?? undefined,
       demo: row.isDemo,
+      hasBuild: Boolean(row.buildUploadedAt),
     };
 
     return {
@@ -164,12 +174,12 @@ export async function loadPrograms(): Promise<ProgramView[]> {
   return loadProgramTree();
 }
 
-export async function loadProgram(slug: string): Promise<ProgramView | undefined> {
+export const loadProgram = cache(async (slug: string): Promise<ProgramView | undefined> => {
   const [program] = await loadProgramTree(slug);
   return program;
-}
+});
 
-async function programIdBySlug(slug: string): Promise<number | null> {
+export const programIdBySlug = cache(async (slug: string): Promise<number | null> => {
   const db = getDb();
   if (!db) return null;
   const [row] = await db
@@ -177,31 +187,42 @@ async function programIdBySlug(slug: string): Promise<number | null> {
     .from(schema.programs)
     .where(eq(schema.programs.slug, slug));
   return row?.id ?? null;
-}
+});
 
-/* --- Хаб: участники и канал --------------------------------------------- */
+/** Программа и текущая версия её сборки (момент загрузки в мс); null — сборки нет. */
+export const buildBySlug = cache(
+  async (slug: string): Promise<{ programId: number; version: number | null } | null> => {
+    const db = getDb();
+    if (!db) return null;
+    const [row] = await db
+      .select({ id: schema.programs.id, uploadedAt: schema.programs.buildUploadedAt })
+      .from(schema.programs)
+      .where(eq(schema.programs.slug, slug));
+    return row ? { programId: row.id, version: row.uploadedAt?.getTime() ?? null } : null;
+  },
+);
 
-export async function loadHub(program: ProgramView): Promise<HubData | null> {
+/* --- Состав программы ---------------------------------------------------- */
+
+export async function loadMembers(programId: number): Promise<Member[]> {
   const db = getDb();
-  if (!db) return null;
+  if (!db) return [];
 
-  const programId = await programIdBySlug(program.slug);
-  if (!programId) return null;
-
-  const memberRows = await db
+  const rows = await db
     .select({
       id: schema.members.id,
       name: schema.members.name,
-      role: schema.members.role,
+      role: schema.programMembers.role,
       position: schema.members.position,
       org: schema.members.org,
       city: schema.members.city,
     })
     .from(schema.programMembers)
     .innerJoin(schema.members, eq(schema.members.id, schema.programMembers.memberId))
-    .where(eq(schema.programMembers.programId, programId));
+    .where(eq(schema.programMembers.programId, programId))
+    .orderBy(asc(schema.members.name));
 
-  const members: Member[] = memberRows.map((row) => ({
+  return rows.map((row) => ({
     id: row.id,
     name: row.name,
     role: row.role,
@@ -209,12 +230,23 @@ export async function loadHub(program: ProgramView): Promise<HubData | null> {
     org: row.org ?? undefined,
     city: row.city ?? undefined,
   }));
+}
+
+/* --- Канал --------------------------------------------------------------- */
+
+export async function loadChannel(
+  programId: number,
+  programSlug: string,
+  viewer: Viewer,
+): Promise<Post[]> {
+  const db = getDb();
+  if (!db) return [];
 
   const postRows = await db
     .select()
     .from(schema.posts)
     .where(eq(schema.posts.programId, programId))
-    .orderBy(desc(schema.posts.createdAt));
+    .orderBy(desc(schema.posts.pinned), desc(schema.posts.createdAt));
 
   const postIds = postRows.map((row) => row.id);
   const commentRows = postIds.length
@@ -226,10 +258,11 @@ export async function loadHub(program: ProgramView): Promise<HubData | null> {
     : [];
 
   const [postReactions, commentReactions] = await Promise.all([
-    loadReactions("post", postIds),
+    loadReactions("post", postIds, viewer.id),
     loadReactions(
       "comment",
       commentRows.map((row) => row.id),
+      viewer.id,
     ),
   ]);
 
@@ -252,7 +285,6 @@ export async function loadHub(program: ProgramView): Promise<HubData | null> {
       commentsByPost.set(row.postId, list);
     }
   }
-
   for (const row of commentRows) {
     if (!row.parentId) continue;
     const parent = commentIndex.get(row.parentId);
@@ -260,9 +292,9 @@ export async function loadHub(program: ProgramView): Promise<HubData | null> {
     if (parent && child) parent.replies.push(child);
   }
 
-  const posts: Post[] = postRows.map((row) => ({
+  return postRows.map((row) => ({
     id: row.id,
-    programSlug: program.slug,
+    programSlug,
     authorId: row.authorId,
     title: row.title ?? undefined,
     body: row.body,
@@ -272,156 +304,190 @@ export async function loadHub(program: ProgramView): Promise<HubData | null> {
     reactions: postReactions.get(row.id) ?? [],
     comments: commentsByPost.get(row.id) ?? [],
   }));
-
-  return { members, posts, currentUserId: "u-p-01" };
 }
 
 /* --- Опросы ------------------------------------------------------------- */
 
 export async function loadPollData(
-  program: ProgramView,
-  members: Member[],
-): Promise<PollData | null> {
+  programId: number,
+  programSlug: string,
+  viewer: Viewer,
+): Promise<PollData> {
   const db = getDb();
-  if (!db) return null;
-
-  const programId = await programIdBySlug(program.slug);
-  if (!programId) return null;
+  if (!db) return { polls: [], sessions: [], templates: POLL_TEMPLATES };
 
   const pollRows = await db
     .select()
     .from(schema.polls)
-    .where(eq(schema.polls.programId, programId));
+    .where(eq(schema.polls.programId, programId))
+    .orderBy(desc(schema.polls.createdAt));
 
   if (pollRows.length === 0) {
     return { polls: [], sessions: [], templates: POLL_TEMPLATES };
   }
 
   const pollIds = pollRows.map((row) => row.id);
+  const [questionRows, sessionRows] = await Promise.all([
+    db
+      .select()
+      .from(schema.pollQuestions)
+      .where(inArray(schema.pollQuestions.pollId, pollIds))
+      .orderBy(asc(schema.pollQuestions.position)),
+    db.select().from(schema.pollSessions).where(inArray(schema.pollSessions.pollId, pollIds)),
+  ]);
 
-  const questionRows = await db
-    .select()
-    .from(schema.pollQuestions)
-    .where(inArray(schema.pollQuestions.pollId, pollIds))
-    .orderBy(asc(schema.pollQuestions.position));
-
-  const sessionRows = await db
-    .select()
-    .from(schema.pollSessions)
-    .where(inArray(schema.pollSessions.pollId, pollIds));
-
-  const sessionIds = sessionRows.map((row) => row.id);
+  // Участник не видит черновики: опрос появляется у него, когда ведущий его запустил
+  const visibleSessions = viewer.staff
+    ? sessionRows
+    : sessionRows.filter((row) => row.status !== "draft");
+  const sessionIds = visibleSessions.map((row) => row.id);
 
   const responseRows = sessionIds.length
     ? await db
-        .select()
+        .select({
+          id: schema.pollResponses.id,
+          sessionId: schema.pollResponses.sessionId,
+          questionId: schema.pollResponses.questionId,
+          memberId: schema.pollResponses.memberId,
+          respondentKey: schema.pollResponses.respondentKey,
+          optionIds: schema.pollResponses.optionIds,
+          text: schema.pollResponses.text,
+          scale: schema.pollResponses.scale,
+          createdAt: schema.pollResponses.createdAt,
+        })
         .from(schema.pollResponses)
         .where(inArray(schema.pollResponses.sessionId, sessionIds))
         .orderBy(asc(schema.pollResponses.createdAt))
     : [];
 
-  const polls: Poll[] = pollRows.map((row) => ({
-    id: row.id,
-    programSlug: program.slug,
-    title: row.title,
-    description: row.description ?? undefined,
-    anonymous: row.anonymous,
-    createdAt: toMoscowIso(row.createdAt),
-    source: row.source,
-    templateKey: row.templateKey ?? undefined,
-    questions: questionRows
-      .filter((question) => question.pollId === row.id)
-      .map((question) => ({
-        // id вопроса — тот же, что в базе: клиент отправляет его обратно без преобразований
-        id: question.id,
-        kind: question.kind,
-        title: question.title,
-        hint: question.hint ?? undefined,
-        options: question.options,
-        scaleLabels: question.scaleLabels ?? undefined,
-        visual: question.visual ?? undefined,
-        timeLimit: question.timeLimit,
-        points: question.points,
-      })),
-  }));
+  const visiblePollIds = new Set(visibleSessions.map((row) => row.pollId));
 
-  const sessions: PollSession[] = sessionRows.map((row) => ({
-    id: row.id,
-    pollId: row.pollId,
-    programSlug: program.slug,
-    code: row.code,
-    status: row.status,
-    currentIndex: row.currentIndex,
-    accepting: row.accepting,
-    showResults: row.showResults,
-    startedAt: row.startedAt ? toMoscowIso(row.startedAt) : undefined,
-    finishedAt: row.finishedAt ? toMoscowIso(row.finishedAt) : undefined,
-    responses: responseRows
-      .filter((response) => response.sessionId === row.id)
-      .map<PollResponse>((response) => ({
-        id: response.id,
-        questionId: response.questionId,
-        memberId: response.memberId ?? undefined,
-        value: {
-          optionIds: response.optionIds,
-          text: response.text ?? undefined,
-          scale: response.scale ?? undefined,
-        },
-        createdAt: toMoscowIso(response.createdAt),
-      })),
-  }));
+  const polls: Poll[] = pollRows
+    .filter((row) => viewer.staff || visiblePollIds.has(row.id))
+    .map((row) => ({
+      id: row.id,
+      programSlug,
+      title: row.title,
+      description: row.description ?? undefined,
+      anonymous: row.anonymous,
+      createdAt: toMoscowIso(row.createdAt),
+      source: row.source,
+      templateKey: row.templateKey ?? undefined,
+      questions: questionRows
+        .filter((question) => question.pollId === row.id)
+        .map((question) => ({
+          // id вопроса — тот же, что в базе: клиент отправляет его обратно без преобразований
+          id: question.id,
+          kind: question.kind,
+          title: question.title,
+          hint: question.hint ?? undefined,
+          options: question.options,
+          scaleLabels: question.scaleLabels ?? undefined,
+          visual: question.visual ?? undefined,
+          timeLimit: question.timeLimit,
+          points: question.points,
+        })),
+    }));
+
+  const sessions: PollSession[] = visibleSessions.map((row) => {
+    const mineKey = respondentKey(viewer.id, row.id);
+    return {
+      id: row.id,
+      pollId: row.pollId,
+      programSlug,
+      code: row.code,
+      status: row.status,
+      currentIndex: row.currentIndex,
+      accepting: row.accepting,
+      showResults: row.showResults,
+      startedAt: row.startedAt ? toMoscowIso(row.startedAt) : undefined,
+      finishedAt: row.finishedAt ? toMoscowIso(row.finishedAt) : undefined,
+      responses: responseRows
+        .filter((response) => response.sessionId === row.id)
+        .map<PollResponse>((response) => ({
+          id: response.id,
+          questionId: response.questionId,
+          memberId: response.memberId ?? undefined,
+          mine: response.respondentKey === mineKey || response.memberId === viewer.id,
+          value: {
+            optionIds: response.optionIds,
+            text: response.text ?? undefined,
+            scale: response.scale ?? undefined,
+          },
+          createdAt: toMoscowIso(response.createdAt),
+        })),
+    };
+  });
 
   return { polls, sessions, templates: POLL_TEMPLATES };
 }
 
 /* --- Чаты --------------------------------------------------------------- */
 
+/** Только беседы, где состоит человек: чужие личные диалоги в браузер не попадают. */
 export async function loadChatData(
-  program: ProgramView,
-  members: Member[],
-): Promise<ChatData | null> {
+  programId: number,
+  programSlug: string,
+  viewer: Viewer,
+): Promise<ChatData> {
   const db = getDb();
-  if (!db) return null;
-
-  const programId = await programIdBySlug(program.slug);
-  if (!programId) return null;
+  const empty: ChatData = { conversations: [], messages: [], readState: {} };
+  if (!db) return empty;
 
   const conversationRows = await db
-    .select()
+    .select({
+      id: schema.conversations.id,
+      kind: schema.conversations.kind,
+      title: schema.conversations.title,
+      topic: schema.conversations.topic,
+      emoji: schema.conversations.emoji,
+      createdBy: schema.conversations.createdBy,
+      createdAt: schema.conversations.createdAt,
+    })
     .from(schema.conversations)
+    .innerJoin(
+      schema.conversationMembers,
+      and(
+        eq(schema.conversationMembers.conversationId, schema.conversations.id),
+        eq(schema.conversationMembers.memberId, viewer.id),
+      ),
+    )
     .where(eq(schema.conversations.programId, programId));
 
-  if (conversationRows.length === 0) {
-    return { conversations: [], messages: [], readState: {} };
-  }
+  if (conversationRows.length === 0) return empty;
 
   const conversationIds = conversationRows.map((row) => row.id);
 
-  const memberRows = await db
-    .select()
-    .from(schema.conversationMembers)
-    .where(inArray(schema.conversationMembers.conversationId, conversationIds));
-
-  const messageRows = await db
-    .select()
-    .from(schema.messages)
-    .where(inArray(schema.messages.conversationId, conversationIds))
-    .orderBy(asc(schema.messages.createdAt));
-
-  const [messageReactions, readRows] = await Promise.all([
-    loadReactions(
-      "message",
-      messageRows.map((row) => row.id),
-    ),
+  const [memberRows, messageRows, readRows] = await Promise.all([
+    db
+      .select()
+      .from(schema.conversationMembers)
+      .where(inArray(schema.conversationMembers.conversationId, conversationIds)),
+    db
+      .select()
+      .from(schema.messages)
+      .where(inArray(schema.messages.conversationId, conversationIds))
+      .orderBy(asc(schema.messages.createdAt)),
     db
       .select()
       .from(schema.chatReadState)
-      .where(inArray(schema.chatReadState.conversationId, conversationIds)),
+      .where(
+        and(
+          inArray(schema.chatReadState.conversationId, conversationIds),
+          eq(schema.chatReadState.memberId, viewer.id),
+        ),
+      ),
   ]);
+
+  const messageReactions = await loadReactions(
+    "message",
+    messageRows.map((row) => row.id),
+    viewer.id,
+  );
 
   const conversations: Conversation[] = conversationRows.map((row) => ({
     id: row.id,
-    programSlug: program.slug,
+    programSlug,
     kind: row.kind,
     title: row.title ?? undefined,
     topic: row.topic ?? undefined,

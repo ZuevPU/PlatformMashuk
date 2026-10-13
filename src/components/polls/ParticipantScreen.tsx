@@ -59,26 +59,26 @@ export function ParticipantScreen({
   };
 
   return (
-    <div className="mx-auto w-full max-w-[380px]">
-      <div className="mb-3 flex items-center gap-2 px-1 text-[12px] text-ink-faint">
+    <div className="mx-auto w-full max-w-95">
+      <div className="mb-3 flex items-center gap-2 px-1 text-caption text-ink-faint">
         <Smartphone size={14} />
         Экран участника — так это выглядит на телефоне
       </div>
 
-      <div className="overflow-hidden rounded-[32px] border border-[var(--line)] bg-white shadow-[var(--shadow-brand)]">
+      <div className="overflow-hidden rounded-4xl border border-[var(--line)] bg-white shadow-[var(--shadow-brand)]">
         <div className="mesh mesh--accent px-5 py-4">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <span className="text-[11px] font-semibold tracking-[0.14em] text-sky-light uppercase">
+            <span className="text-micro font-semibold tracking-[0.14em] text-sky-light uppercase">
               Опрос программы
             </span>
-            <span className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white">
+            <span className="rounded-full bg-white/15 px-2.5 py-1 text-micro font-semibold text-white">
               код {session.code}
             </span>
           </div>
-          <p className="m-0 text-[14px] leading-snug font-medium text-white">{poll.title}</p>
+          <p className="m-0 text-ui leading-snug font-medium text-white">{poll.title}</p>
         </div>
 
-        <div className="flex min-h-[380px] flex-col p-5">
+        <div className="flex min-h-95 flex-col p-5">
           {session.status !== "live" ? (
             <State
               title={session.status === "draft" ? "Опрос ещё не начался" : "Опрос завершён"}
@@ -98,11 +98,11 @@ export function ParticipantScreen({
             <State title="Приём ответов закрыт" text="Ведущий закрыл вопрос — ждём следующий." />
           ) : (
             <>
-              <p className="m-0 mb-1 text-[11px] font-semibold tracking-[0.12em] text-gold uppercase">
+              <p className="m-0 mb-1 text-micro font-semibold tracking-[0.12em] text-gold-ink uppercase">
                 {QUESTION_KIND_LABELS[question.kind]}
                 {secondsLeft !== null ? ` · ${secondsLeft} с` : ""}
               </p>
-              <h3 className="m-0 mb-4 font-display text-[19px] leading-snug font-semibold tracking-[-0.02em] text-navy">
+              <h3 className="m-0 mb-4 font-display text-subtitle leading-snug font-semibold tracking-[-0.02em] text-navy">
                 {question.title}
               </h3>
 
@@ -112,7 +112,7 @@ export function ParticipantScreen({
                   onChange={(event) => setText(event.target.value)}
                   rows={4}
                   placeholder={question.hint ?? "Ваш ответ"}
-                  className="w-full resize-none rounded-[16px] border border-[var(--line)] bg-white px-4 py-3 text-[14px] leading-relaxed outline-none focus:border-navy"
+                  className="w-full resize-none rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-ui leading-relaxed outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy focus:border-navy"
                 />
               ) : question.kind === "scale" ? (
                 <div>
@@ -123,9 +123,9 @@ export function ParticipantScreen({
                         type="button"
                         onClick={() => setScale(value2)}
                         className={[
-                          "grid h-14 flex-1 cursor-pointer place-items-center rounded-[14px] border text-[18px] font-semibold transition-all duration-200 ease-brand",
+                          "grid h-14 flex-1 cursor-pointer place-items-center rounded-field border text-subtitle font-semibold transition-all duration-200 ease-brand",
                           scale === value2
-                            ? "border-transparent text-white"
+                            ? "border-transparent text-on-accent"
                             : "border-[var(--line)] bg-white text-navy hover:-translate-y-0.5",
                         ].join(" ")}
                         style={scale === value2 ? { background: "var(--accent)" } : undefined}
@@ -135,7 +135,7 @@ export function ParticipantScreen({
                     ))}
                   </div>
                   {question.scaleLabels && (
-                    <div className="mt-2.5 flex justify-between text-[11px] text-ink-faint">
+                    <div className="mt-2.5 flex justify-between text-micro text-ink-faint">
                       <span>{question.scaleLabels.min}</span>
                       <span>{question.scaleLabels.max}</span>
                     </div>
@@ -151,12 +151,12 @@ export function ParticipantScreen({
                         type="button"
                         onClick={() => toggleOption(option.id)}
                         className={[
-                          "cursor-pointer rounded-[14px] border px-4 py-3 text-left text-[14px] leading-snug transition-all duration-200 ease-brand",
+                          "cursor-pointer rounded-field border px-4 py-3 text-left text-ui leading-snug transition-all duration-200 ease-brand",
                           active
-                            ? "border-transparent text-white"
+                            ? "border-transparent text-on-accent"
                             : "border-[var(--line)] bg-white text-ink hover:-translate-y-0.5",
                         ].join(" ")}
-                        style={active ? { background: "var(--navy)" } : undefined}
+                        style={active ? { background: "var(--color-navy)" } : undefined}
                       >
                         {option.text}
                       </button>
@@ -169,13 +169,13 @@ export function ParticipantScreen({
                 type="button"
                 disabled={!value}
                 onClick={() => value && onSubmit(value)}
-                className="mt-5 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-full bg-navy text-[14px] font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep disabled:cursor-not-allowed disabled:opacity-40"
+                className="mt-5 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-full bg-navy text-ui font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Send size={15} />
                 Отправить ответ
               </button>
 
-              <p className="m-0 mt-3 text-center text-[11px] text-ink-faint">
+              <p className="m-0 mt-3 text-center text-micro text-ink-faint">
                 {poll.anonymous
                   ? "Ответ анонимный: ведущий не увидит, кто его отправил"
                   : `Ответ от имени ${currentUser.name}`}
@@ -204,14 +204,14 @@ function State({
           className="mx-auto mb-4 grid size-12 place-items-center rounded-full"
           style={
             success
-              ? { background: "color-mix(in oklab, var(--accent) 16%, white)", color: "var(--accent-strong)" }
-              : { background: "rgba(34,63,154,0.08)", color: "#223F9A" }
+              ? { background: "color-mix(in oklab, var(--accent) 16%, white)", color: "var(--accent-ink)" }
+              : { background: "color-mix(in oklab, var(--color-navy) 8%, transparent)", color: "var(--color-navy)" }
           }
         >
           {success ? <CheckCheck size={22} /> : <Smartphone size={20} />}
         </span>
-        <p className="m-0 mb-1.5 font-display text-[17px] font-semibold text-navy">{title}</p>
-        <p className="m-0 text-[13px] leading-relaxed text-ink-faint">{text}</p>
+        <p className="m-0 mb-1.5 font-display text-lead font-semibold text-navy">{title}</p>
+        <p className="m-0 text-meta leading-relaxed text-ink-faint">{text}</p>
       </div>
     </div>
   );

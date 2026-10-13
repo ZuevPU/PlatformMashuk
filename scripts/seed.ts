@@ -1,14 +1,19 @@
 /**
- * Наполнение базы демонстрационными данными.
+ * Наполнение базы: программа «Образование на высоте» с демонстрационным
+ * каналом, чатами и опросами, администратор Центра и пароль программы.
  *
  * Запуск:
- *   DATABASE_URL=postgres://... npx tsx scripts/seed.ts
+ *   DATABASE_URL=postgres://... npm run db:seed
  *
- * Источник — те же модули src/lib/mock, на которых платформа работает
- * без базы. Данные сначала собираются в память, затем пишутся пакетами:
- * так сид выполняется за секунды, а не за минуты.
+ * Пароли берутся из SEED_ADMIN_PASSWORD, SEED_PROGRAM_PASSWORD и
+ * SEED_DEMO_PASSWORD. Если их нет — генерируются и сохраняются в
+ * storage/seed-credentials.txt (файл не попадает в git).
+ *
+ * ВНИМАНИЕ: сид очищает все таблицы. На рабочей базе не запускать.
  */
 
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../src/lib/db/schema";
@@ -17,6 +22,8 @@ import { getMockHub } from "../src/lib/mock/hub";
 import { getMockPollData } from "../src/lib/mock/polls";
 import { getMockChatData } from "../src/lib/mock/chat";
 import { programSeason, programStatus } from "../src/lib/dates";
+import { generatePassword, hashPassword } from "../src/lib/password";
+import { respondentKey } from "../src/lib/respondent";
 import type { Member, Program, ReactionSummary } from "../src/lib/types";
 
 const url =
@@ -32,6 +39,8 @@ type ProgramView = Program & {
 
 /** Пишем большими порциями, но не упираемся в лимит параметров Postgres. */
 const CHUNK = 400;
+
+const ADMIN_LOGIN = "admin@mashuk.local";
 
 function chunked<T>(rows: T[], size = CHUNK): T[][] {
   const result: T[][] = [];
@@ -93,7 +102,15 @@ function expandReactions(
 }
 
 async function main() {
-  log("1/8  Читаю демонстрационные данные…");
+  // Сид очищает все таблицы — на рабочем сервере только по явному согласию
+  if (process.env.NODE_ENV === "production" && process.env.SEED_FORCE !== "1") {
+    log("Отказ: NODE_ENV=production. Сид удалит все данные. Если это стенд — SEED_FORCE=1.");
+    process.exitCode = 1;
+    await client.end();
+    return;
+  }
+
+  log("1/9  Читаю демонстрационные данные…");
 
   const hubs = new Map(views.map((view) => [view.slug, getMockHub(view)]));
   const memberMap = new Map<string, Member>();
@@ -104,24 +121,38 @@ async function main() {
   const participantPool = members.filter((member) => member.role === "participant");
   log(`     программ: ${views.length}, участников: ${members.length}`);
 
-  log("2/8  Очищаю таблицы…");
+  log("2/9  Очищаю таблицы…");
   await client.unsafe(`
     TRUNCATE TABLE
       chat_read_state, messages, conversation_members, conversations,
       poll_responses, poll_sessions, poll_questions, polls,
-      comments, posts, reactions, program_members, members,
+      comments, posts, reactions, program_members, auth_sessions, login_attempts, members,
       program_materials, program_slots, program_days, programs
     RESTART IDENTITY CASCADE
   `);
 
-  log("3/8  Пишу участников и программы…");
+  log("3/9  Пишу участников и программы…");
+  const credentials = {
+    admin: process.env.SEED_ADMIN_PASSWORD || generatePassword(),
+    program: process.env.SEED_PROGRAM_PASSWORD || generatePassword(),
+    demo: process.env.SEED_DEMO_PASSWORD || generatePassword(),
+  };
+  const [adminHash, demoHash, programHash] = await Promise.all([
+    hashPassword(credentials.admin),
+    hashPassword(credentials.demo),
+    hashPassword(credentials.program),
+  ]);
+
+  // Администратор демо-состава — администратор Центра; остальные входят общим демо-паролем
   await insertAll(schema.members, members.map((member) => ({
     id: member.id,
     name: member.name,
-    role: member.role,
+    role: member.role === "admin" ? "admin" : "participant",
     position: member.position ?? null,
     org: member.org ?? null,
     city: member.city ?? null,
+    contact: member.role === "admin" ? ADMIN_LOGIN : `${member.id}@demo.mashuk`,
+    passwordHash: member.role === "admin" ? adminHash : demoHash,
   })));
 
   const insertedPrograms = await db
@@ -151,13 +182,14 @@ async function main() {
         landingCode: view.landing?.code ?? null,
         driveFolder: view.driveFolder ?? null,
         isDemo: Boolean(view.demo),
+        accessPasswordHash: programHash,
       })),
     )
     .returning({ id: schema.programs.id, slug: schema.programs.slug });
 
   const programIds = new Map(insertedPrograms.map((row) => [row.slug, row.id]));
 
-  log("4/8  Пишу состав, дни, блоки и материалы…");
+  log("4/9  Пишу состав, дни, блоки и материалы…");
   const programMemberRows = views.flatMap((view) =>
     hubs.get(view.slug)!.members.map((member) => ({
       programId: programIds.get(view.slug)!,
@@ -211,7 +243,7 @@ async function main() {
   );
   await insertAll(schema.programMaterials, materialRows);
 
-  log("5/8  Пишу канал: посты, комментарии, реакции…");
+  log("5/9  Пишу канал: посты, комментарии, реакции…");
   const postRows: (typeof schema.posts.$inferInsert)[] = [];
   const commentRows: (typeof schema.comments.$inferInsert)[] = [];
   const reactionRows: ReturnType<typeof expandReactions> = [];
@@ -255,7 +287,7 @@ async function main() {
   await insertAll(schema.comments, commentRows);
   log(`     постов: ${postRows.length}, комментариев: ${commentRows.length}`);
 
-  log("6/8  Пишу опросы…");
+  log("6/9  Пишу опросы…");
   const pollRows: (typeof schema.polls.$inferInsert)[] = [];
   const questionRows: (typeof schema.pollQuestions.$inferInsert)[] = [];
   const sessionRows: (typeof schema.pollSessions.$inferInsert)[] = [];
@@ -317,6 +349,7 @@ async function main() {
           sessionId: session.id,
           questionId: `${session.pollId}--${response.questionId}`,
           memberId: response.memberId ?? null,
+          respondentKey: response.memberId ? respondentKey(response.memberId, session.id) : null,
           optionIds: response.value.optionIds,
           text: response.value.text ?? null,
           scale: response.value.scale ?? null,
@@ -334,7 +367,7 @@ async function main() {
     `     опросов: ${pollRows.length}, вопросов: ${questionRows.length}, сессий: ${sessionRows.length}, ответов: ${responseRows.length}`,
   );
 
-  log("7/8  Пишу чаты…");
+  log("7/9  Пишу чаты…");
   const conversationRows: (typeof schema.conversations.$inferInsert)[] = [];
   const conversationMemberRows: (typeof schema.conversationMembers.$inferInsert)[] = [];
   const messageRows: (typeof schema.messages.$inferInsert)[] = [];
@@ -343,7 +376,7 @@ async function main() {
 
   for (const view of views) {
     const programId = programIds.get(view.slug)!;
-    const chat = getMockChatData(view, hubs.get(view.slug)!.members);
+    const chat = getMockChatData(view);
     const conversationIds = new Set(chat.conversations.map((item) => item.id));
 
     for (const conversation of chat.conversations) {
@@ -361,6 +394,24 @@ async function main() {
       for (const memberId of conversation.memberIds) {
         conversationMemberRows.push({ conversationId: conversation.id, memberId });
       }
+    }
+
+    // Общий чат программы: весь состав, новые участники попадают туда автоматически
+    const generalId = `conv-general-${programId}`;
+    const programMembers = hubs.get(view.slug)!.members;
+    conversationRows.push({
+      id: generalId,
+      programId,
+      kind: "group",
+      title: "Общий чат программы",
+      topic: "Все участники программы",
+      emoji: "💬",
+      autoJoin: true,
+      createdBy: programMembers.find((member) => member.role === "admin")?.id ?? programMembers[0].id,
+      createdAt: new Date(`${view.startDate}T09:00:00+03:00`),
+    });
+    for (const member of programMembers) {
+      conversationMemberRows.push({ conversationId: generalId, memberId: member.id });
     }
 
     for (const message of chat.messages) {
@@ -399,29 +450,22 @@ async function main() {
   await insertAll(schema.reactions, [...reactionRows, ...messageReactions]);
   log(`     реакций: ${reactionRows.length + messageReactions.length}`);
 
-  log("9/9  Пишу приглашения…");
-  // Приглашение — одно на человека: он может приехать на несколько программ.
-  const firstProgramByMember = new Map<string, string>();
-  for (const view of views) {
-    for (const member of hubs.get(view.slug)!.members) {
-      if (!firstProgramByMember.has(member.id)) firstProgramByMember.set(member.id, view.slug);
-    }
-  }
-
-  const inviteRows: (typeof schema.invites.$inferInsert)[] = members.map((member) => ({
-    // В демонстрации токен читаемый; в рабочей версии он случайный
-    token: `inv-${member.id}`,
-    programId: programIds.get(firstProgramByMember.get(member.id) ?? views[0].slug) ?? null,
-    memberId: member.id,
-    channel: "link",
-    contact: `${member.id}@demo.mashuk`,
-    status: "pending",
-    expiresAt: new Date(Date.now() + 60 * 86_400_000),
-  }));
-
-  await insertAll(schema.invites, inviteRows);
-  log(`     приглашений: ${inviteRows.length} (по одному на человека)`);
-  log(`     примеры: /invite/inv-u-p-01  ·  вход по коду: u-p-01@demo.mashuk`);
+  log("9/9  Сохраняю пароли для входа…");
+  const file = path.join(process.cwd(), "storage", "seed-credentials.txt");
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(
+    file,
+    [
+      "Тестовые входы после seed (файл не попадает в git)",
+      "",
+      `Администратор Центра: ${ADMIN_LOGIN} / ${credentials.admin}  →  /join, затем /admin`,
+      `Пароль программы «${views[0].title}»: ${credentials.program}  →  /programs/${views[0].slug}/enter`,
+      `Демо-участники: u-p-01@demo.mashuk … / ${credentials.demo}  (модераторы: u-mod-1@demo.mashuk)`,
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  log(`     логины и пароли: ${path.relative(process.cwd(), file)}`);
 
   await client.end();
   log("\nГотово: база наполнена демонстрационными данными.");

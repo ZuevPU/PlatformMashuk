@@ -4,9 +4,9 @@ import { MASCOT, LOGOS } from "../brand";
 import type { ProgramView } from "../data";
 
 /**
- * Демонстрационные данные хаба программы.
+ * Демонстрационные данные хаба программы — источник для seed.
  *
- * Участники вымышлены и нужны только для вёрстки канала, обсуждений и ролей.
+ * Участники вымышлены и нужны, чтобы канал, обсуждения и роли не были пустыми.
  * Эксперты в тексте постов упомянуты по данным авторского одностраничника
  * программы «Образование на высоте».
  */
@@ -90,141 +90,6 @@ function post(
 ): Post {
   return { programSlug: "", pinned: false, ...input };
 }
-
-const KINOPEDAGOGIKA_POSTS: Post[] = [
-  post({
-    id: "kp-1",
-    authorId: ADMIN.id,
-    title: "Добро пожаловать на «Кинопедагогику»",
-    pinned: true,
-    createdAt: "2026-10-06T15:40:00+03:00",
-    body: doc(
-      p(
-        "Коллеги, рады видеть вас в Пятигорске. Этот канал — рабочее место программы: здесь расписание, материалы, объявления и обсуждение.",
-      ),
-      h(3, "Как пользоваться каналом"),
-      ul([
-        ["Расписание и объявления публикует команда Центра — они отмечены как ", b("закреплённые"), "."],
-        ["Вопросы и наблюдения пишите ", b("в комментариях"), " к нужному посту — так обсуждение не теряется."],
-        ["Материалы блоков появляются ", i("после"), " выступления: ссылки будут прямо в посте."],
-      ]),
-      p("Если что-то не открывается или нужна помощь — напишите ", mention("Ирина"), " или ", mention("Пётр"), "."),
-    ),
-    attachments: [],
-    reactions: [
-      { emoji: "👍", count: 34, mine: false },
-      { emoji: "❤️", count: 12, mine: false },
-      { emoji: "🔥", count: 7, mine: false },
-    ],
-    comments: [
-      comment(
-        "kp-1-c1",
-        "u-p-01",
-        doc(p("Спасибо! Подскажите, во сколько завтра первый блок — в расписании 10:00, но мы заселяемся утром.")),
-        "2026-10-06T16:05:00+03:00",
-        [{ emoji: "👍", count: 3, mine: false }],
-        [
-          comment(
-            "kp-1-c1-r1",
-            MODERATORS[1].id,
-            doc(p("Да, первый блок в 10:00 в зале «Машук». Завтрак с 8:30, успеваете.")),
-            "2026-10-06T16:12:00+03:00",
-          ),
-        ],
-      ),
-      comment(
-        "kp-1-c2",
-        "u-p-05",
-        doc(p("Очень ждём разбор сценариев занятий — привезли свою разработку по фильму о выборе профессии.")),
-        "2026-10-06T18:20:00+03:00",
-        [{ emoji: "🔥", count: 5, mine: false }],
-      ),
-    ],
-  }),
-  post({
-    id: "kp-2",
-    authorId: MODERATORS[0].id,
-    title: "Завтра: разговор без морализаторства",
-    createdAt: "2026-10-06T21:10:00+03:00",
-    body: doc(
-      p("Второй день посвящён вопросам, которые действительно запускают обсуждение. Разберём, почему «что ты понял из фильма?» не работает."),
-      quote("Фильм не объясняет — он даёт повод к разговору."),
-      p("С собой: блокнот и один фильм, с которым вы уже работали со школьниками."),
-    ),
-    attachments: [
-      {
-        id: "att-kp-2",
-        kind: "image",
-        url: MASCOT.front,
-        alt: "Машутка — фирменный маскот Центра знаний «Машук»",
-      },
-    ],
-    reactions: [
-      { emoji: "👏", count: 21, mine: false },
-      { emoji: "🎯", count: 9, mine: false },
-    ],
-    comments: [
-      comment(
-        "kp-2-c1",
-        "u-p-08",
-        doc(p("А можно принести документальный фильм? Или лучше игровое кино?")),
-        "2026-10-06T21:44:00+03:00",
-        [],
-        [
-          comment(
-            "kp-2-c1-r1",
-            MODERATORS[0].id,
-            doc(p("Можно и документальное — важно, чтобы был повод для разговора о выборе, а не только факты.")),
-            "2026-10-06T21:52:00+03:00",
-            [{ emoji: "👍", count: 4, mine: false }],
-          ),
-        ],
-      ),
-    ],
-  }),
-  post({
-    id: "kp-3",
-    authorId: ADMIN.id,
-    title: "Материалы второго дня",
-    createdAt: "2026-10-07T18:30:00+03:00",
-    body: doc(
-      p("Выкладываем рабочие листы по разбору и шаблон сценария занятия — тот, который защищаем завтра."),
-      ul([
-        ["Рабочие листы: вопросы по возрастным группам"],
-        ["Шаблон сценария занятия: смысл — пространство — действие — рефлексия"],
-      ]),
-      p("Ссылки — кнопками ниже. Защита сценариев завтра в 10:00, по 7 минут на команду."),
-    ),
-    attachments: [],
-    reactions: [
-      { emoji: "👍", count: 41, mine: false },
-      { emoji: "🎯", count: 15, mine: false },
-    ],
-    comments: [
-      comment(
-        "kp-3-c1",
-        "u-p-11",
-        doc(p("Шаблон очень понятный, спасибо. Вопрос: рефлексию писать отдельным блоком или внутри действия?")),
-        "2026-10-07T19:02:00+03:00",
-        [],
-        [
-          comment(
-            "kp-3-c1-r1",
-            MODERATORS[0].id,
-            doc(p("Отдельным блоком — иначе на защите её просто не видно. Ориентируйтесь на 15 минут.")),
-            "2026-10-07T19:20:00+03:00",
-          ),
-        ],
-      ),
-      comment(
-        "kp-3-c2",
-        "u-p-03",
-        doc(p("А будет запись сегодняшнего кинопоказа? Хотим показать коллегам фрагмент.")),
-        "2026-10-07T20:15:00+03:00",
-      ),
-    ],
-  }),
-];
 
 const OBRAZOVANIE_POSTS: Post[] = [
   post({
@@ -313,97 +178,9 @@ const OBRAZOVANIE_POSTS: Post[] = [
   }),
 ];
 
-function defaultPosts(program: ProgramView): Post[] {
-  const firstDay = program.days[0];
-  const firstSlot = firstDay?.slots[0];
-
-  return [
-    post({
-      id: `${program.slug}-welcome`,
-      authorId: ADMIN.id,
-      title: `Добро пожаловать на программу «${program.title}»`,
-      pinned: true,
-      createdAt: `${program.startDate}T15:00:00+03:00`,
-      body: doc(
-        p(
-          `Это канал программы. Здесь расписание, материалы блоков, объявления команды Центра и обсуждение участников.`,
-        ),
-        h(3, "Что важно знать"),
-        ul([
-          ["Посты публикует команда Центра и модераторы программы."],
-          ["Вопросы задавайте в комментариях к нужному посту."],
-          ["Материалы появляются после каждого блока — ссылки будут в посте."],
-        ]),
-        program.landing
-          ? p("Итоги программы после завершения соберём в отдельной странице — ", link("база знаний программы", program.landing.url), ".")
-          : p("После завершения программы здесь появится ссылка на итоговую страницу с материалами."),
-      ),
-      attachments: [],
-      reactions: [{ emoji: "👍", count: 18, mine: false }],
-      comments: [
-        comment(
-          `${program.slug}-welcome-c1`,
-          "u-p-05",
-          doc(p("Добрый день! Подскажите, будет ли запись выступлений?")),
-          `${program.startDate}T16:20:00+03:00`,
-          [],
-          [
-            comment(
-              `${program.slug}-welcome-c1-r1`,
-              MODERATORS[0].id,
-              doc(p("Записи выкладываем по согласованию со спикерами — следите за постами в канале.")),
-              `${program.startDate}T16:35:00+03:00`,
-            ),
-          ],
-        ),
-      ],
-    }),
-    ...(firstSlot
-      ? [
-          post({
-            id: `${program.slug}-day1`,
-            authorId: MODERATORS[1].id,
-            title: `Сегодня: день 1 — ${firstDay.theme}`,
-            createdAt: `${program.startDate}T08:30:00+03:00`,
-            body: doc(
-              p("Расписание первого дня — ниже. Напоминаем: приходите за 15 минут до начала."),
-              ul(firstDay.slots.map((slot) => [`${slot.time} — `, b(slot.title), slot.speakers ? ` (${slot.speakers.join(", ")})` : ""])),
-            ),
-            attachments: [],
-            reactions: [{ emoji: "👍", count: 24, mine: false }],
-            comments: [],
-          }),
-        ]
-      : []),
-    post({
-      id: `${program.slug}-materials`,
-      authorId: ADMIN.id,
-      title: "Как найти материалы программы",
-      createdAt: `${program.startDate}T19:00:00+03:00`,
-      body: doc(
-        p("Все материалы собраны в разделе «Материалы» на странице программы — по дням и блокам."),
-        ul([
-          ["Материалы блоков обновляются в течение дня после выступления."],
-          ["Если чего-то не хватает — напишите в комментариях, добавим."],
-        ]),
-      ),
-      attachments: [],
-      reactions: [
-        { emoji: "👍", count: 15, mine: false },
-        { emoji: "🎯", count: 6, mine: false },
-      ],
-      comments: [],
-    }),
-  ].map((item) => ({ ...item, programSlug: program.slug }));
-}
-
-const AUTHORED: Record<string, Post[]> = {
-  kinopedagogika: KINOPEDAGOGIKA_POSTS,
-  "obrazovanie-na-vysote": OBRAZOVANIE_POSTS,
-};
-
 export function getMockHub(program: ProgramView): HubData {
-  const posts = (AUTHORED[program.slug] ?? defaultPosts(program)).map((item) => ({
+  const authored = program.slug === "obrazovanie-na-vysote" ? OBRAZOVANIE_POSTS : [];
+  const posts = authored.map((item) => ({
     ...item,
     programSlug: program.slug,
   }));

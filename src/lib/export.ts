@@ -228,9 +228,12 @@ export async function exportQuestionPng(input: {
   session: PollSession;
   members: Member[];
   accent: string;
+  /** Тёмный тон акцента для слов облака: светлый акцент на белом не читается */
+  accentInk?: string;
   fileName: string;
 }): Promise<void> {
   const { poll, question, session, members, accent, fileName } = input;
+  const accentInk = input.accentInk ?? accent;
   const pollTitle = poll.title;
   const responses = responsesFor(session, question.id);
 
@@ -308,7 +311,7 @@ export async function exportQuestionPng(input: {
     } else {
       let x = 80;
       let lineHeight = 0;
-      const palette = [accent, NAVY, "#0B4D4D", "#246A99", "#A2855F"];
+      const palette = [accentInk, NAVY, "#0B4D4D", "#246A99", "#7C6440"];
       words.slice(0, 34).forEach((word, index) => {
         const size = 20 + word.weight * 9;
         context.font = `${index % 3 === 0 ? 600 : 500} ${size}px ${font}`;

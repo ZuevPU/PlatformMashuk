@@ -1,3 +1,4 @@
+import { uuid } from "./uid";
 import type {
   AnswerValue,
   Member,
@@ -93,7 +94,8 @@ export function hasAnswered(
   memberId: string,
 ): boolean {
   return session.responses.some(
-    (response) => response.questionId === questionId && response.memberId === memberId,
+    (response) =>
+      response.questionId === questionId && (response.mine || response.memberId === memberId),
   );
 }
 
@@ -104,9 +106,10 @@ export function createResponse(input: {
   createdAt: string;
 }): PollResponse {
   return {
-    id: `response-${input.questionId}-${input.createdAt}-${Math.round(performance.now())}`,
+    id: `response-${uuid()}`,
     questionId: input.questionId,
     memberId: input.memberId,
+    mine: true,
     value: input.value,
     createdAt: input.createdAt,
   };
@@ -440,23 +443,8 @@ export function leaderboard(
 }
 
 /* ==========================================================================
-   Демонстрация живого потока
-   Без сервера ответы других участников имитируются: так экран ведущего
-   выглядит живым, а на волне 5 тот же интерфейс получит настоящий реалтайм.
+   Демонстрационные ответы для seed
    ========================================================================== */
-
-export function simulateResponses(input: {
-  question: Question;
-  members: Member[];
-  count: number;
-  phrases: string[];
-  createdAt: string;
-  anonymous: boolean;
-  /** Кто уже ответил на этот вопрос — повторно не добавляем */
-  exclude?: string[];
-}): PollResponse[] {
-  return buildResponses({ ...input, random: Math.random });
-}
 
 /**
  * Сборка ответов с внешним источником случайности.

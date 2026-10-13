@@ -13,7 +13,14 @@ import {
 } from "@/lib/poll-actions";
 import { formatTime } from "@/lib/dates";
 
-const CLOUD_PALETTE = ["var(--accent)", "#223F9A", "#0B4D4D", "#246A99", "#A2855F"];
+// Цвета слов облака — только тона, читаемые на белом (контраст ≥ 5:1)
+const CLOUD_PALETTE = [
+  "var(--accent-ink)",
+  "var(--color-navy)",
+  "var(--color-teal)",
+  "var(--color-sky-ink)",
+  "var(--color-gold-ink)",
+];
 
 interface ResultsProps {
   poll: Poll;
@@ -29,12 +36,12 @@ export function QuestionResults({ poll, question, session, members, anonymous }:
 
   if (responses.length === 0) {
     return (
-      <div className="grid min-h-[220px] place-items-center rounded-[20px] border border-dashed border-[var(--line)] bg-white/60 px-6 text-center">
+      <div className="grid min-h-55 place-items-center rounded-panel border border-dashed border-[var(--line)] bg-white/60 px-6 text-center">
         <div>
           <p className="m-0 mb-1.5 font-display text-lg font-semibold text-navy">
             Ждём первые ответы
           </p>
-          <p className="m-0 text-[13px] text-ink-faint">
+          <p className="m-0 text-meta text-ink-faint">
             Ответы появятся здесь сразу, как только участники начнут отвечать.
           </p>
         </div>
@@ -53,16 +60,16 @@ export function QuestionResults({ poll, question, session, members, anonymous }:
   if (question.kind === "scale") {
     const stats = scaleStats(responses);
     return (
-      <div className="rounded-[20px] border border-[var(--line)] bg-white p-6">
+      <div className="rounded-panel border border-[var(--line)] bg-white p-6">
         <div className="mb-6 flex flex-wrap items-end gap-4">
-          <span className="font-display text-[56px] leading-none font-semibold tracking-[-0.04em] text-navy">
+          <span className="font-display text-display leading-none font-semibold tracking-[-0.04em] text-navy">
             {stats.average.toFixed(1).replace(".", ",")}
           </span>
-          <span className="pb-1.5 text-[13px] text-ink-soft">
+          <span className="pb-1.5 text-meta text-ink-soft">
             средний балл из 5 · ответов {stats.total}
           </span>
           {question.scaleLabels && (
-            <span className="ml-auto pb-1.5 text-[12px] text-ink-faint">
+            <span className="ml-auto pb-1.5 text-caption text-ink-faint">
               {question.scaleLabels.min} → {question.scaleLabels.max}
             </span>
           )}
@@ -73,14 +80,14 @@ export function QuestionResults({ poll, question, session, members, anonymous }:
             const percent = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0;
             return (
               <div key={index} className="grid grid-cols-[28px_1fr_74px] items-center gap-3">
-                <span className="text-[14px] font-semibold text-ink">{index + 1}</span>
-                <span className="h-6 overflow-hidden rounded-full bg-[rgba(34,63,154,0.08)]">
+                <span className="text-ui font-semibold text-ink">{index + 1}</span>
+                <span className="h-6 overflow-hidden rounded-full bg-navy/8">
                   <span
                     className="block h-full rounded-full transition-[width] duration-500 ease-brand"
                     style={{ width: `${percent}%`, background: "var(--accent)" }}
                   />
                 </span>
-                <span className="text-right text-[13px] text-ink-soft">
+                <span className="text-right text-meta text-ink-soft">
                   {count} · {percent}%
                 </span>
               </div>
@@ -95,28 +102,28 @@ export function QuestionResults({ poll, question, session, members, anonymous }:
   const max = Math.max(...tallies.map((tally) => tally.count), 1);
 
   return (
-    <div className="rounded-[20px] border border-[var(--line)] bg-white p-6">
+    <div className="rounded-panel border border-[var(--line)] bg-white p-6">
       <div className="flex flex-col gap-4">
         {tallies.map((tally) => (
           <div key={tally.optionId}>
             <div className="mb-1.5 flex flex-wrap items-center gap-2">
-              <span className="text-[14px] font-medium text-ink">{tally.text}</span>
+              <span className="text-ui font-medium text-ink">{tally.text}</span>
               {question.kind === "quiz" && tally.correct && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-[#0B4D4D] px-2 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-white uppercase">
+                <span className="inline-flex items-center gap-1 rounded-full bg-teal px-2 py-0.5 text-micro font-semibold tracking-[0.06em] text-white uppercase">
                   <CheckCircle2 size={11} />
                   верный
                 </span>
               )}
-              <span className="ml-auto text-[13px] font-semibold text-navy">
+              <span className="ml-auto text-meta font-semibold text-navy">
                 {tally.count} · {tally.percent}%
               </span>
             </div>
-            <span className="block h-8 overflow-hidden rounded-[10px] bg-[rgba(34,63,154,0.08)]">
+            <span className="block h-8 overflow-hidden rounded-chip bg-navy/8">
               <span
-                className="block h-full rounded-[10px] transition-[width] duration-500 ease-brand"
+                className="block h-full rounded-chip transition-[width] duration-500 ease-brand"
                 style={{
                   width: `${(tally.count / max) * 100}%`,
-                  background: tally.correct ? "#0B4D4D" : "var(--accent)",
+                  background: tally.correct ? "var(--color-teal)" : "var(--accent)",
                 }}
               />
             </span>
@@ -125,7 +132,7 @@ export function QuestionResults({ poll, question, session, members, anonymous }:
       </div>
 
       {question.kind === "multiple" && (
-        <p className="m-0 mt-4 text-[12px] text-ink-faint">
+        <p className="m-0 mt-4 text-caption text-ink-faint">
           Участники могли отметить несколько вариантов, поэтому сумма больше 100%.
         </p>
       )}
@@ -137,7 +144,7 @@ function WordCloud({ responses }: { responses: PollResponse[] }) {
   const words = cloudWords(responses);
 
   return (
-    <div className="rounded-[20px] border border-[var(--line)] bg-white p-7">
+    <div className="rounded-panel border border-[var(--line)] bg-white p-7">
       <div className="flex flex-wrap items-baseline justify-center gap-x-5 gap-y-2">
         {words.map((word, index) => (
           <span
@@ -154,7 +161,7 @@ function WordCloud({ responses }: { responses: PollResponse[] }) {
           </span>
         ))}
       </div>
-      <p className="m-0 mt-6 text-center text-[12px] text-ink-faint">
+      <p className="m-0 mt-6 text-center text-caption text-ink-faint">
         Размер слова — как часто оно встречается в ответах
       </p>
     </div>
@@ -177,10 +184,10 @@ function OpenList({
       {answers.map((answer) => (
         <article
           key={answer.id}
-          className="rounded-[18px] border border-[var(--line)] bg-white px-5 py-4"
+          className="rounded-soft border border-[var(--line)] bg-white px-5 py-4"
         >
-          <p className="m-0 mb-2.5 text-[14px] leading-relaxed text-ink">{answer.text}</p>
-          <p className="m-0 text-[11px] text-ink-faint">
+          <p className="m-0 mb-2.5 text-ui leading-relaxed text-ink">{answer.text}</p>
+          <p className="m-0 text-micro text-ink-faint">
             {anonymous || !answer.authorName ? "анонимно" : answer.authorName} ·{" "}
             {formatTime(answer.createdAt)}
           </p>
@@ -206,8 +213,8 @@ export function Leaderboard({
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-[20px] border border-dashed border-[var(--line)] bg-white/60 px-6 py-8 text-center">
-        <p className="m-0 text-[13px] text-ink-faint">
+      <div className="rounded-panel border border-dashed border-[var(--line)] bg-white/60 px-6 py-8 text-center">
+        <p className="m-0 text-meta text-ink-faint">
           Итоги квиза появятся после первых верных ответов.
         </p>
       </div>
@@ -217,12 +224,12 @@ export function Leaderboard({
   const quizTotal = poll.questions.filter((question) => question.kind === "quiz").length;
 
   return (
-    <div className="overflow-hidden rounded-[20px] border border-[var(--line)] bg-white">
+    <div className="overflow-hidden rounded-panel border border-[var(--line)] bg-white">
       <div className="flex items-center gap-3 border-b border-[var(--line)] px-5 py-3.5">
-        <span className="font-display text-[15px] font-semibold tracking-[-0.02em] text-navy">
+        <span className="font-display text-body font-semibold tracking-[-0.02em] text-navy">
           Лидерборд
         </span>
-        <span className="text-[12px] text-ink-faint">
+        <span className="text-caption text-ink-faint">
           {quizTotal} {quizTotal === 1 ? "вопрос" : quizTotal < 5 ? "вопроса" : "вопросов"} · очки за
           верные ответы
         </span>
@@ -241,25 +248,25 @@ export function Leaderboard({
           >
             <span
               className={[
-                "grid size-8 shrink-0 place-items-center rounded-full text-[13px] font-semibold",
-                index === 0 ? "text-white" : "text-navy",
+                "grid size-8 shrink-0 place-items-center rounded-full text-meta font-semibold",
+                index === 0 ? "text-on-accent" : "text-navy",
               ].join(" ")}
               style={
                 index === 0
                   ? { background: "var(--accent)" }
-                  : { background: "rgba(34,63,154,0.08)" }
+                  : { background: "color-mix(in oklab, var(--color-navy) 8%, transparent)" }
               }
             >
               {index + 1}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[14px] font-medium text-ink">{row.name}</span>
-              <span className="block text-[11px] text-ink-faint">
+              <span className="block truncate text-ui font-medium text-ink">{row.name}</span>
+              <span className="block text-micro text-ink-faint">
                 верных ответов: {row.correct} из {row.totalQuiz}
                 {row.firstCorrectAt ? ` · первый верный в ${formatTime(row.firstCorrectAt)}` : ""}
               </span>
             </span>
-            <span className="font-display text-[18px] font-semibold tracking-[-0.02em] text-navy">
+            <span className="font-display text-subtitle font-semibold tracking-[-0.02em] text-navy">
               {row.points}
             </span>
           </li>
@@ -274,16 +281,16 @@ export function AcceptingBadge({ accepting }: { accepting: boolean }) {
   return (
     <span
       className={[
-        "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] font-semibold",
-        accepting ? "text-white" : "text-ink-soft",
+        "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-caption font-semibold",
+        accepting ? "text-on-accent" : "text-ink-soft",
       ].join(" ")}
       style={
         accepting
           ? { background: "var(--accent)" }
-          : { background: "rgba(220,222,221,0.6)" }
+          : { background: "color-mix(in oklab, var(--color-grey-brand) 60%, transparent)" }
       }
     >
-      {accepting ? <span className="size-1.5 rounded-full bg-white motion-safe:animate-pulse" /> : <Clock3 size={12} />}
+      {accepting ? <span className="size-1.5 rounded-full bg-on-accent motion-safe:animate-pulse" /> : <Clock3 size={12} />}
       {accepting ? "Приём ответов открыт" : "Приём ответов закрыт"}
     </span>
   );

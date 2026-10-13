@@ -29,6 +29,9 @@
   --color-paper: #fafafa;
   --color-paper-warm: #f7f6f2;
 
+  /* --- Служебный: ошибки. Тёмный тон осеннего акцента — читается на белом (AA) --- */
+  --color-danger: #c1394a;
+
   /* --- Сезонные схемы (стр. 11–14) --- */
   --color-spring: #3ad754;
   --color-spring-strong: #0b4d4d;
@@ -39,25 +42,61 @@
   --color-winter: #4582f2;
   --color-winter-strong: #d6e3fb;
 
-  /* --- Акцент активной программы (переопределяется через [data-season]) --- */
-  --color-accent: var(--accent);
-  --color-accent-strong: var(--accent-strong);
+  /* Золото как текст: тёмный тон фирменного золота (контраст 5,5:1) */
+  --color-gold-ink: #7c6440;
 
   /* --- Типографика (стр. 21–23) --- */
   --font-display: var(--font-geologica), Verdana, Arial, sans-serif;
   --font-body: var(--font-geologica), Verdana, Arial, sans-serif;
   --font-long: var(--font-noto-serif), Georgia, "Times New Roman", serif;
 
-  /* --- Геометрия --- */
+  /* --- Типографическая шкала интерфейса (Geologica) ---
+     Ступени, а не произвольные пиксели: каждый размер отвечает за свою роль.
+     Межстрочный интервал не задаётся — наследуется от контекста. */
+  --text-micro: 11px; /* служебные метки, бейджи, надзаголовки карточек */
+  --text-caption: 12px; /* подписи, вторичные данные */
+  --text-meta: 13px; /* метаданные, кнопки второго плана, подсказки */
+  --text-ui: 14px; /* основной текст интерфейса */
+  --text-body: 15px; /* текст сообщений и постов */
+  --text-lead: 16px; /* имена, акцентные строки */
+  --text-subtitle: 18px; /* подзаголовки карточек, крупные значения */
+  --text-title-sm: 20px; /* заголовки малых блоков */
+  --text-title: 22px; /* заголовки панелей */
+  --text-title-lg: 24px; /* заголовки разделов в карточках */
+  --text-heading: 28px; /* крупные заголовки внутри страниц */
+  --text-display-sm: 40px; /* цифры на экране ведущего */
+  --text-display: 56px; /* код опроса на проекторе */
+
+  /* --- Геометрия: радиусы по иерархии (от чипа до карточки) --- */
+  --radius-chip: 10px; /* пункты меню, мелкие элементы */
+  --radius-field: 14px; /* поля, кнопки-плитки, уведомления */
   --radius-card: 26px;
   --radius-soft: 18px;
   --radius-glass: 18px;
+  --radius-panel: 20px; /* вложенные панели и блоки */
+  --blur-glass: 18px;
   --ease-brand: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* --- Акцент активной программы ---------------------------------------------
+   inline: утилиты (bg-accent, text-accent-ink, text-on-accent) ссылаются
+   на переменные напрямую и берут цвет сезона у ближайшего [data-season].
+   Без inline Tailwind вычислил бы их один раз на :root — и все программы
+   получили бы акцент по умолчанию. */
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  /* Акцент как текст на светлом фоне: тёмный тон сезона, контраст ≥ 5:1 */
+  --color-accent-ink: var(--accent-ink);
+  /* Текст на сплошной акцентной заливке: белый на светлых акцентах не читается */
+  --color-on-accent: var(--on-accent);
 }
 
 :root {
   --accent: #54a4db;
   --accent-strong: #223f9a;
+  --accent-ink: #246a99;
+  --on-accent: #0a1014;
 
   --line: rgba(34, 63, 154, 0.13);
   --line-soft: rgba(34, 63, 154, 0.1);
@@ -69,21 +108,25 @@
 [data-season="spring"] {
   --accent: #3ad754;
   --accent-strong: #0b4d4d;
+  --accent-ink: #18712e;
 }
 
 [data-season="summer"] {
   --accent: #ff5b00;
   --accent-strong: #f18300;
+  --accent-ink: #b84100;
 }
 
 [data-season="autumn"] {
   --accent: #f24559;
   --accent-strong: #f68e9a;
+  --accent-ink: #b02a3c;
 }
 
 [data-season="winter"] {
   --accent: #4582f2;
   --accent-strong: #d6e3fb;
+  --accent-ink: #2a5bbd;
 }
 
 @layer base {
@@ -153,10 +196,10 @@
     padding: 100px 0;
   }
 
-  /* --- Надзаголовок (eyebrow): 12px, 600, трекинг .18em, золото --- */
+  /* --- Надзаголовок (eyebrow): 12px, 600, трекинг .18em, золото (тёмный тон — читается на светлом) --- */
   .eyebrow {
     margin: 0 0 14px;
-    color: var(--color-gold);
+    color: var(--color-gold-ink);
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.18em;

@@ -1,8 +1,17 @@
 import type { Member, MemberRole } from "@/lib/types";
 import { MEMBER_ROLE_LABELS } from "@/lib/types";
 
-/** Фирменные тона аватаров: основной синий, бирюзовый, песочный, голубой. */
-const TONES = ["#223F9A", "#0B4D4D", "#A2855F", "#246A99", "#192F78"];
+/**
+ * Фирменные тона аватаров: основной синий, бирюзовый, песочный, голубой.
+ * Только тёмные тона — белые инициалы на них читаются (контраст ≥ 5:1).
+ */
+const TONES = [
+  "var(--color-navy)",
+  "var(--color-teal)",
+  "var(--color-gold-ink)",
+  "var(--color-sky-ink)",
+  "var(--color-navy-deep)",
+];
 
 function toneIndex(name: string): number {
   let hash = 0;
@@ -46,27 +55,15 @@ export function Avatar({
 }
 
 const ROLE_STYLES: Record<MemberRole, string> = {
-  admin: "background: rgba(34,63,154,0.1); color: #223F9A;",
-  moderator: "background: rgba(162,133,95,0.14); color: #7C6440;",
-  participant: "background: rgba(220,222,221,0.6); color: #655D53;",
+  admin: "bg-navy/10 text-navy",
+  moderator: "bg-gold/14 text-gold-ink",
+  participant: "bg-grey-brand/60 text-ink-soft",
 };
 
 export function RoleBadge({ role }: { role: MemberRole }) {
   return (
     <span
-      className="rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-[0.06em] uppercase"
-      style={Object.fromEntries(
-        ROLE_STYLES[role]
-          .split(";")
-          .filter(Boolean)
-          .map((rule) => {
-            const [property, value] = rule.split(":");
-            const camel = property
-              .trim()
-              .replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
-            return [camel, value.trim()];
-          }),
-      )}
+      className={`rounded-full px-2 py-0.5 text-micro font-semibold tracking-[0.06em] uppercase ${ROLE_STYLES[role]}`}
     >
       {MEMBER_ROLE_LABELS[role]}
     </span>

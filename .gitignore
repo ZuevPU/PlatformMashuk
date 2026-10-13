@@ -14,3 +14,9 @@ tsconfig.tsbuildinfo
 # Загруженные пользователями файлы: в репозиторий не попадают
 public/uploads/*
 !public/uploads/README.txt
+
+# Локальные настройки Claude Code
+.claude/settings.local.json
+
+# Сборки программ и служебные файлы сервера: не в репозиторий
+/storage/

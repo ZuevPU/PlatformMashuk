@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { ButtonLink } from "@/components/ui/Button";
 import { MountainLine } from "@/components/brand/MountainLine";
-import { JoinForm } from "@/components/site/JoinForm";
-import { getSessionUser } from "@/lib/auth";
+import { LoginForm } from "@/components/auth/AuthForms";
+import { getSessionUser, homeFor } from "@/lib/auth";
 import { hasDatabase } from "@/lib/db/client";
-import { LogOut } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Вход в программу",
-  description:
-    "Как слушатель попадает в рабочее пространство программы Центра знаний «Машук».",
+  title: "Вход",
+  description: "Вход в рабочее пространство программы Центра знаний «Машук».",
+  robots: { index: false, follow: false },
 };
 
 /** Страница читает сессию из cookie — рендерится при каждом запросе. */
@@ -17,89 +17,82 @@ export const dynamic = "force-dynamic";
 
 const STEPS = [
   {
-    title: "Персональная ссылка",
-    text: "После формирования списка участников каждому слушателю приходит персональная ссылка-приглашение. Открывается один раз — и доступ к программе уже выдан.",
+    title: "Впервые на программе",
+    text: "Откройте страницу программы и нажмите «Войти в программу». Введите пароль программы от организаторов, представьтесь и придумайте личный пароль.",
   },
   {
-    title: "Код на почту",
-    text: "Если ссылка потерялась, вход восстанавливается по адресу электронной почты: приходит одноразовый код, пароль запоминать не нужно.",
+    title: "Уже участник",
+    text: "Входите по своей почте или телефону и личному паролю — здесь или на странице программы. Вход работает на любом устройстве.",
   },
   {
-    title: "Код по SMS",
-    text: "Для тех, кому удобнее телефон: вход по номеру и одноразовому коду в SMS. Номер используется только для входа и служебных уведомлений.",
+    title: "Забыли пароль",
+    text: "Напишите организаторам: администратор выдаст новый пароль, старый перестанет работать сразу на всех устройствах.",
   },
 ];
 
-export default async function JoinPage() {
+export default async function JoinPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next } = await searchParams;
   const session = await getSessionUser();
-  const authEnabled = hasDatabase();
+  if (session) redirect(await homeFor(session.member.id, session.isCenterAdmin));
 
   return (
     <>
-      <section className="mesh relative pt-[84px] pb-[76px]">
+      <section className="mesh relative pt-21 pb-19">
         <div className="wrap relative">
           <p className="eyebrow eyebrow--light">Сопровождение программы</p>
-          <h1 className="m-0 mb-7 max-w-[880px] font-display text-[clamp(40px,6vw,82px)] leading-[0.94] font-semibold tracking-[-0.065em] text-white">
-            Вход в программу
+          <h1 className="m-0 mb-7 max-w-220 font-display text-[clamp(40px,6vw,82px)] leading-[0.94] font-semibold tracking-[-0.065em] text-white">
+            Вход
           </h1>
-          <p className="lead lead--light max-w-[700px]">
-            Витрина программ открыта всем. Рабочее пространство программы — канал,
-            обсуждения, живые опросы и материалы — доступно её участникам.
+          <p className="lead lead--light max-w-175">
+            Страница программы открыта всем. Рабочее пространство — канал, чаты, живые опросы
+            и сборка программы — доступно только участникам.
           </p>
-          <div className="mt-9 flex flex-wrap gap-3">
-            <ButtonLink href="/#programs" variant="light">
-              К программам
-            </ButtonLink>
-          </div>
         </div>
         <MountainLine className="text-white" />
       </section>
 
       <section className="section">
-        <div className="wrap">
-          <div className="mb-11 max-w-[780px]">
-            <p className="eyebrow">Три способа войти</p>
-            <h2 className="section-title">Без паролей и лишних шагов</h2>
-            <p className="lead">
-              Слушатели приходят на программу на три дня — вход должен занимать секунды,
-              а не требовать регистрации.
+        <div className="wrap grid gap-10 lg:grid-cols-[minmax(0,440px)_1fr] lg:items-start">
+          <div className="card p-7 md:p-8">
+            <h2 className="m-0 mb-1.5 font-display text-title-lg font-semibold tracking-[-0.03em] text-navy">
+              Личный вход
+            </h2>
+            <p className="m-0 mb-6 text-meta leading-relaxed text-ink-soft">
+              Почта или телефон и пароль, который вы задали при первом входе или получили
+              от организаторов.
             </p>
+            {hasDatabase() ? (
+              <LoginForm next={next} />
+            ) : (
+              <p className="m-0 rounded-field bg-sky-tint px-4 py-3 text-meta text-sky-ink">
+                Вход появится после подключения базы данных.
+              </p>
+            )}
           </div>
 
-          <div className="grid gap-[18px] md:grid-cols-3">
+          <div className="grid gap-4.5">
             {STEPS.map((step, index) => (
-              <article key={step.title} className="card p-7">
-                <span className="card-num mb-6 block" aria-hidden="true">
+              <article key={step.title} className="card flex-row gap-5 p-6">
+                <span className="card-num shrink-0" aria-hidden="true">
                   {String(index + 1).padStart(2, "0")}
                 </span>
-                <h3 className="m-0 mb-2.5 font-display text-xl font-semibold tracking-[-0.02em] text-navy">
-                  {step.title}
-                </h3>
-                <p className="m-0 text-sm leading-relaxed text-ink-soft">{step.text}</p>
+                <div>
+                  <h3 className="m-0 mb-1.5 font-display text-lg font-semibold tracking-[-0.02em] text-navy">
+                    {step.title}
+                  </h3>
+                  <p className="m-0 text-sm leading-relaxed text-ink-soft">{step.text}</p>
+                </div>
               </article>
             ))}
-          </div>
-
-          <div className="mt-12">
-            {session ? (
-              <div className="mb-4 flex flex-wrap items-center gap-4 rounded-[26px] border border-[var(--line)] bg-white p-6">
-                <span className="text-[14px] text-ink-soft">
-                  Вы вошли как <b className="text-ink">{session.member.name}</b>
-                  {session.member.position ? ` · ${session.member.position}` : ""}
-                </span>
-                <form action="/api/auth/logout" method="post" className="ml-auto">
-                  <button
-                    type="submit"
-                    className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 text-[13px] font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
-                  >
-                    <LogOut size={14} />
-                    Выйти
-                  </button>
-                </form>
-              </div>
-            ) : null}
-
-            <JoinForm authEnabled={authEnabled} />
+            <div>
+              <ButtonLink href="/#programs" variant="outline">
+                К программе
+              </ButtonLink>
+            </div>
           </div>
         </div>
       </section>

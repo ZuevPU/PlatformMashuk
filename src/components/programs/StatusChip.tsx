@@ -13,15 +13,15 @@ const LABELS: Record<ProgramStatus, string> = {
 const STYLES: Record<ProgramStatus, CSSProperties> = {
   recruiting: {
     background: "color-mix(in oklab, var(--accent) 15%, white)",
-    color: "color-mix(in oklab, var(--accent) 62%, #0a1014)",
+    color: "var(--accent-ink)",
   },
   ongoing: {
-    background: "#223f9a",
-    color: "#ffffff",
+    background: "var(--color-navy)",
+    color: "var(--color-paper)",
   },
   finished: {
-    background: "rgba(220, 222, 221, 0.6)",
-    color: "#655d53",
+    background: "color-mix(in oklab, var(--color-grey-brand) 60%, transparent)",
+    color: "var(--color-ink-soft)",
   },
 };
 

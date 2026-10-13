@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageSquarePlus, Search, Users, X } from "lucide-react";
 import { NewChatDialog } from "./NewChatDialog";
 import { MessageFeed } from "./MessageFeed";
 import { Avatar } from "@/components/hub/Avatar";
-import { Composer } from "@/components/hub/Composer";
+import { Composer } from "@/components/hub/LazyComposer";
 import type { ComposerPayload } from "@/components/hub/Composer";
 import {
   addMessage,
@@ -24,7 +24,12 @@ import {
 } from "@/lib/chat-actions";
 import { docToText } from "@/lib/rich";
 import { localIsoNow, formatTime, plural } from "@/lib/dates";
-import { createConversationAction, sendMessageAction } from "@/app/programs/[slug]/hub/actions";
+import {
+  createConversationAction,
+  markReadAction,
+  sendMessageAction,
+  toggleReactionAction,
+} from "@/app/programs/[slug]/hub/actions";
 import type { ChatData, ChatMessage, Conversation, Member } from "@/lib/types";
 
 interface ChatViewProps {
@@ -34,8 +39,8 @@ interface ChatViewProps {
   currentUser: Member;
   canManage: boolean;
   mentionNames: string[];
-  /** Запись в базу доступна вошедшему участнику */
-  persist?: boolean;
+  /** Ошибка записи — показывается над хабом */
+  onError?: (message: string) => void;
 }
 
 export function ChatView({
@@ -45,11 +50,32 @@ export function ChatView({
   currentUser,
   canManage,
   mentionNames,
-  persist = false,
+  onError,
 }: ChatViewProps) {
   const [conversations, setConversations] = useState<Conversation[]>(data.conversations);
   const [messages, setMessages] = useState<ChatMessage[]>(data.messages);
   const [readState, setReadState] = useState<Record<string, string>>(data.readState);
+  /** Созданное здесь, но ещё не подтверждённое базой: не теряем при обновлении данных */
+  const pending = useRef({
+    messages: new Map<string, ChatMessage>(),
+    conversations: new Map<string, Conversation>(),
+  });
+  /** Создание беседы в базе: сообщение в новую беседу ждёт, пока она появится */
+  const creating = useRef(new Map<string, Promise<string | null>>());
+
+  // Сервер — источник истины: живые события приносят свежие данные пропсом
+  useEffect(() => {
+    const { messages: waitingMessages, conversations: waitingConversations } = pending.current;
+    const knownMessages = new Set(data.messages.map((message) => message.id));
+    const knownConversations = new Set(data.conversations.map((conversation) => conversation.id));
+    for (const id of waitingMessages.keys()) if (knownMessages.has(id)) waitingMessages.delete(id);
+    for (const id of waitingConversations.keys()) {
+      if (knownConversations.has(id)) waitingConversations.delete(id);
+    }
+    setConversations([...data.conversations, ...waitingConversations.values()]);
+    setMessages([...data.messages, ...waitingMessages.values()]);
+    setReadState((previous) => ({ ...previous, ...data.readState }));
+  }, [data]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<null | "group" | "direct">(null);
@@ -87,7 +113,8 @@ export function ChatView({
     }
   }, [activeId, visible]);
 
-  // Открытая беседа считается прочитанной
+  // Открытая беседа считается прочитанной — и на этом устройстве, и в базе
+  const lastReadSent = useRef<string | null>(null);
   useEffect(() => {
     if (!activeId) return;
     const last = lastMessage(messages, activeId);
@@ -97,37 +124,85 @@ export function ChatView({
       if (previous[key] === last.createdAt) return previous;
       return { ...previous, [key]: last.createdAt };
     });
-  }, [activeId, currentUser.id, messages]);
+    if (lastReadSent.current !== last.id && !pending.current.conversations.has(activeId)) {
+      lastReadSent.current = last.id;
+      void markReadAction({ programSlug, conversationId: activeId });
+    }
+  }, [activeId, currentUser.id, messages, programSlug]);
 
   const activeConversation = conversations.find((conversation) => conversation.id === activeId);
   const activeMessages = activeId ? messagesOf(messages, activeId) : [];
 
   const send = (payload: ComposerPayload) => {
     if (!activeId) return;
-    setMessages((previous) =>
-      addMessage(
-        previous,
-        createMessage({
-          conversationId: activeId,
-          authorId: currentUser.id,
-          body: payload.body,
-          attachments: payload.attachments,
-          createdAt: localIsoNow(),
-          replyToId: replyTo?.id,
-        }),
-      ),
-    );
+    const message = createMessage({
+      conversationId: activeId,
+      authorId: currentUser.id,
+      body: payload.body,
+      attachments: payload.attachments,
+      createdAt: localIsoNow(),
+      replyToId: replyTo?.id,
+    });
+    pending.current.messages.set(message.id, message);
+    setMessages((previous) => addMessage(previous, message));
     setReplyTo(null);
 
-    if (persist) {
-      void sendMessageAction({
-        programSlug,
-        conversationId: activeId,
-        body: payload.body,
-        attachments: payload.attachments,
-        replyToId: replyTo?.id,
+    const conversationReady = creating.current.get(activeId) ?? Promise.resolve(activeId);
+    void conversationReady
+      .then((conversationId) =>
+        conversationId
+          ? sendMessageAction({
+              programSlug,
+              id: message.id,
+              conversationId,
+              body: payload.body,
+              attachments: payload.attachments,
+              replyToId: message.replyToId,
+            })
+          : ({ ok: false, error: "Беседа не создана" } as const),
+      )
+      .then((result) => {
+        if (result.ok) return;
+        pending.current.messages.delete(message.id);
+        setMessages((previous) => previous.filter((item) => item.id !== message.id));
+        onError?.(result.error);
       });
-    }
+  };
+
+  /** Беседа создаётся сразу в интерфейсе и следом — в базе. */
+  const persistConversation = (conversation: Conversation, memberIds: string[]) => {
+    pending.current.conversations.set(conversation.id, conversation);
+    setConversations((previous) => [conversation, ...previous]);
+    setActiveId(conversation.id);
+    setDialog(null);
+
+    const created = createConversationAction({
+      programSlug,
+      id: conversation.id,
+      kind: conversation.kind,
+      title: conversation.title,
+      topic: conversation.topic,
+      emoji: conversation.emoji,
+      memberIds,
+    });
+    creating.current.set(
+      conversation.id,
+      created.then((result) => (result.ok ? result.conversationId : null)),
+    );
+
+    void created.then((result) => {
+      creating.current.delete(conversation.id);
+      if (result.ok && result.conversationId === conversation.id) return;
+      // Не сохранилась — убираем; личный диалог уже был — открываем его
+      pending.current.conversations.delete(conversation.id);
+      setConversations((previous) => previous.filter((item) => item.id !== conversation.id));
+      if (result.ok) {
+        setActiveId(result.conversationId);
+      } else {
+        setActiveId(null);
+        onError?.(result.error);
+      }
+    });
   };
 
   const createGroup = (input: { title: string; topic?: string; memberIds: string[] }) => {
@@ -141,20 +216,7 @@ export function ChatView({
       createdBy: currentUser.id,
       createdAt: localIsoNow(),
     });
-    setConversations((previous) => [conversation, ...previous]);
-    setActiveId(conversation.id);
-    setDialog(null);
-
-    if (persist) {
-      void createConversationAction({
-        programSlug,
-        kind: "group",
-        title: input.title.trim(),
-        topic: input.topic?.trim() || undefined,
-        emoji: "💬",
-        memberIds: input.memberIds,
-      });
-    }
+    persistConversation(conversation, input.memberIds);
   };
 
   const openDirect = (memberId: string) => {
@@ -171,19 +233,17 @@ export function ChatView({
       createdBy: currentUser.id,
       createdAt: localIsoNow(),
     });
-    setConversations((previous) => [conversation, ...previous]);
-    setActiveId(conversation.id);
-    setDialog(null);
+    persistConversation(conversation, [memberId]);
   };
 
   return (
     <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start">
       {/* ------------------------------------------------- Список бесед */}
-      <aside className="card overflow-hidden p-0 lg:sticky lg:top-[96px]">
+      <aside className="card overflow-hidden p-0 lg:sticky lg:top-24">
         <div className="flex items-center gap-2 border-b border-[var(--line)] px-5 py-4">
           <div className="min-w-0">
             <p className="eyebrow mb-0.5">Чаты программы</p>
-            <p className="m-0 text-[12px] text-ink-faint">
+            <p className="m-0 text-caption text-ink-faint">
               {plural(visibleConversations(conversations, currentUser.id).length, "беседа", "беседы", "бесед")}
               {totalUnread > 0 ? ` · непрочитанных ${totalUnread}` : ""}
             </p>
@@ -192,6 +252,7 @@ export function ChatView({
             <button
               type="button"
               title="Новый личный диалог"
+              aria-label="Новый личный диалог"
               onClick={() => setDialog("direct")}
               className="grid size-9 cursor-pointer place-items-center rounded-full border border-[var(--line)] bg-white text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
             >
@@ -201,6 +262,7 @@ export function ChatView({
               <button
                 type="button"
                 title="Создать группу по направлению"
+                aria-label="Создать группу по направлению"
                 onClick={() => setDialog("group")}
                 className="grid size-9 cursor-pointer place-items-center rounded-full border border-[var(--line)] bg-white text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
               >
@@ -217,11 +279,11 @@ export function ChatView({
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Поиск беседы"
             aria-label="Поиск беседы"
-            className="min-h-10 w-full bg-transparent text-[13px] outline-none"
+            className="min-h-10 w-full bg-transparent text-meta outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
           />
         </label>
 
-        <div className="max-h-[460px] overflow-auto pb-2">
+        <div className="max-h-115 overflow-auto pb-2">
           {visible.map((conversation) => {
             const last = lastMessage(messages, conversation.id);
             const unread = unreadCount(messages, conversation.id, currentUser.id, readState);
@@ -242,12 +304,8 @@ export function ChatView({
               >
                 {conversation.kind === "group" ? (
                   <span
-                    className="grid size-10 shrink-0 place-items-center rounded-[14px] text-[18px]"
-                    style={{
-                      background: active
-                        ? "rgba(255,255,255,0.16)"
-                        : "color-mix(in oklab, var(--accent) 14%, white)",
-                    }}
+                    className={`grid size-10 shrink-0 place-items-center rounded-field text-subtitle ${active ? "bg-white/16" : ""}`}
+                    style={active ? undefined : { background: "color-mix(in oklab, var(--accent) 14%, white)" }}
                   >
                     {conversation.emoji ?? "💬"}
                   </span>
@@ -259,7 +317,7 @@ export function ChatView({
                   <span className="flex items-center gap-2">
                     <span
                       className={[
-                        "truncate text-[13.5px] font-semibold",
+                        "truncate text-meta font-semibold",
                         active ? "text-white" : "text-ink",
                       ].join(" ")}
                     >
@@ -268,7 +326,7 @@ export function ChatView({
                     {last && (
                       <span
                         className={[
-                          "ml-auto shrink-0 text-[11px]",
+                          "ml-auto shrink-0 text-micro",
                           active ? "text-white/70" : "text-ink-faint",
                         ].join(" ")}
                       >
@@ -279,7 +337,7 @@ export function ChatView({
                   <span className="mt-0.5 flex items-center gap-2">
                     <span
                       className={[
-                        "truncate text-[12px]",
+                        "truncate text-caption",
                         active ? "text-white/75" : "text-ink-faint",
                       ].join(" ")}
                     >
@@ -287,8 +345,8 @@ export function ChatView({
                     </span>
                     {unread > 0 && (
                       <span
-                        className="ml-auto grid min-w-[20px] shrink-0 place-items-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-white"
-                        style={{ background: active ? "rgba(255,255,255,0.28)" : "var(--accent)" }}
+                        className={`ml-auto grid min-w-5 shrink-0 place-items-center rounded-full px-1.5 py-0.5 text-micro font-semibold ${active ? "bg-white/28 text-white" : "text-on-accent"}`}
+                        style={active ? undefined : { background: "var(--accent)" }}
                       >
                         {unread}
                       </span>
@@ -300,7 +358,7 @@ export function ChatView({
           })}
 
           {visible.length === 0 && (
-            <p className="m-0 px-4 py-6 text-center text-[13px] text-ink-faint">
+            <p className="m-0 px-4 py-6 text-center text-meta text-ink-faint">
               Бесед пока нет. Начните личный диалог или создайте группу.
             </p>
           )}
@@ -313,7 +371,7 @@ export function ChatView({
           <div className="flex flex-wrap items-center gap-4 border-b border-[var(--line)] px-6 py-4">
             {activeConversation.kind === "group" ? (
               <span
-                className="grid size-11 shrink-0 place-items-center rounded-[14px] text-[20px]"
+                className="grid size-11 shrink-0 place-items-center rounded-field text-title-sm"
                 style={{ background: "color-mix(in oklab, var(--accent) 14%, white)" }}
               >
                 {activeConversation.emoji ?? "💬"}
@@ -328,10 +386,10 @@ export function ChatView({
             )}
 
             <div className="min-w-0">
-              <h2 className="m-0 font-display text-[19px] leading-tight font-semibold tracking-[-0.02em] text-navy">
+              <h2 className="m-0 font-display text-subtitle leading-tight font-semibold tracking-[-0.02em] text-navy">
                 {conversationTitle(activeConversation, members, currentUser.id)}
               </h2>
-              <p className="m-0 text-[12px] text-ink-faint">
+              <p className="m-0 text-caption text-ink-faint">
                 {activeConversation.kind === "group"
                   ? `${activeConversation.memberIds.length} ${plural(
                       activeConversation.memberIds.length,
@@ -353,7 +411,7 @@ export function ChatView({
                   />
                 ))}
                 {activeConversation.memberIds.length > 6 && (
-                  <span className="text-[12px] text-ink-faint">
+                  <span className="text-caption text-ink-faint">
                     +{activeConversation.memberIds.length - 6}
                   </span>
                 )}
@@ -361,7 +419,7 @@ export function ChatView({
             )}
           </div>
 
-          <div className="max-h-[560px] overflow-auto bg-[var(--color-paper-warm)] px-6 py-5">
+          <div className="max-h-140 overflow-auto bg-[var(--color-paper-warm)] px-6 py-5">
             <MessageFeed
               conversation={activeConversation}
               messages={activeMessages}
@@ -370,9 +428,17 @@ export function ChatView({
               mentionNames={mentionNames}
               replyTo={replyTo}
               onSetReply={setReplyTo}
-              onToggleReaction={(messageId, emoji) =>
-                setMessages((previous) => toggleMessageReaction(previous, messageId, emoji))
-              }
+              onToggleReaction={(messageId, emoji) => {
+                setMessages((previous) => toggleMessageReaction(previous, messageId, emoji));
+                void toggleReactionAction({
+                  programSlug,
+                  targetType: "message",
+                  targetId: messageId,
+                  emoji,
+                }).then((result) => {
+                  if (!result.ok) onError?.(result.error);
+                });
+              }}
             />
           </div>
 
@@ -380,14 +446,14 @@ export function ChatView({
             {replyTo && (
               <div
                 data-reply-banner="true"
-                className="mb-3 flex items-start gap-3 rounded-[14px] border border-[var(--line)] bg-[var(--color-sky-tint)] px-4 py-2.5"
+                className="mb-3 flex items-start gap-3 rounded-field border border-[var(--line)] bg-[var(--color-sky-tint)] px-4 py-2.5"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="m-0 text-[11px] font-semibold text-sky-ink">
+                  <p className="m-0 text-micro font-semibold text-sky-ink">
                     Ответ{" "}
                     {members.find((member) => member.id === replyTo.authorId)?.name ?? "участнику"}
                   </p>
-                  <p className="m-0 truncate text-[12px] text-ink-soft">
+                  <p className="m-0 truncate text-caption text-ink-soft">
                     {docToText(replyTo.body).slice(0, 120)}
                   </p>
                 </div>
@@ -413,12 +479,12 @@ export function ChatView({
           </div>
         </section>
       ) : (
-        <section className="card grid min-h-[320px] place-items-center p-8 text-center">
+        <section className="card grid min-h-80 place-items-center p-8 text-center">
           <div>
             <p className="m-0 mb-1.5 font-display text-lg font-semibold text-navy">
               Выберите беседу
             </p>
-            <p className="m-0 text-[13px] text-ink-faint">
+            <p className="m-0 text-meta text-ink-faint">
               Слева — группы по направлениям и личные диалоги участников.
             </p>
           </div>
