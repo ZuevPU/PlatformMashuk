@@ -65,9 +65,9 @@ export function buildPollCsv(input: {
   for (const [index, question] of poll.questions.entries()) {
     const responses = responsesFor(session, question.id);
 
-    if (question.kind === "open") {
-      const words = cloudWords(responses).slice(0, 20);
-      if (words.length === 0) {
+    if (question.kind === "open" || question.kind === "cloud" || question.kind === "qa") {
+      const words = question.kind === "cloud" ? cloudWords(responses).slice(0, 20) : [];
+      if (words.length === 0 && question.kind !== "qa") {
         rows.push(csvRow([index + 1, question.title, QUESTION_KIND_LABELS[question.kind], "—", 0, ""]));
       }
       for (const word of words) {

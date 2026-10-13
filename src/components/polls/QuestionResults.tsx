@@ -49,12 +49,21 @@ export function QuestionResults({ poll, question, session, members, anonymous }:
     );
   }
 
+  if (question.kind === "cloud") {
+    return <WordCloud responses={responses} />;
+  }
+
   if (question.kind === "open") {
-    return question.visual === "list" ? (
-      <OpenList responses={responses} members={members} anonymous={anonymous} />
-    ) : (
+    return question.visual === "cloud" ? (
       <WordCloud responses={responses} />
+    ) : (
+      <OpenList responses={responses} members={members} anonymous={anonymous} />
     );
+  }
+
+  if (question.kind === "qa") {
+    // Живой список вопросов зала — как «Ask me anything» в AhaSlides
+    return <OpenList responses={responses} members={members} anonymous={anonymous} question />;
   }
 
   if (question.kind === "scale") {
@@ -172,12 +181,15 @@ function OpenList({
   responses,
   members,
   anonymous,
+  question = false,
 }: {
   responses: PollResponse[];
   members: Member[];
   anonymous: boolean;
+  /** Q&A: вопросов от зала может быть много, список длиннее */
+  question?: boolean;
 }) {
-  const answers = openAnswers(responses, members).slice(0, 12);
+  const answers = openAnswers(responses, members).slice(0, question ? 40 : 12);
 
   return (
     <div className="grid gap-3 md:grid-cols-2">

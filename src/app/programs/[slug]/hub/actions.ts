@@ -267,7 +267,7 @@ export async function toggleReactionAction(input: {
 
 /* --- Опросы ------------------------------------------------------------- */
 
-const KINDS: QuestionKind[] = ["single", "multiple", "open", "scale", "quiz"];
+const KINDS: QuestionKind[] = ["single", "multiple", "open", "cloud", "qa", "scale", "quiz"];
 
 /**
  * Ответ участника на текущий вопрос живой сессии.
@@ -328,6 +328,9 @@ export async function submitPollResponseAction(input: {
   if (!value) return fail("Ответ не распознан");
 
   const { memberId } = result.context;
+  // Q&A — поток вопросов от зала: отвечать можно много раз, поэтому
+  // обезличенный ключ не ставится (уникальность по нему не срабатывает).
+  const isQa = question.kind === "qa";
   const inserted = await db
     .insert(schema.pollResponses)
     .values({
@@ -335,7 +338,7 @@ export async function submitPollResponseAction(input: {
       sessionId: session.id,
       questionId: question.id,
       memberId: session.anonymous ? null : memberId,
-      respondentKey: respondentKey(memberId, session.id),
+      respondentKey: isQa ? null : respondentKey(memberId, session.id),
       optionIds: value.optionIds,
       text: value.text ?? null,
       scale: value.scale ?? null,
@@ -362,7 +365,7 @@ function cleanAnswer(
 ): { optionIds: string[]; text?: string; scale?: number } | null {
   if (!value || typeof value !== "object") return null;
 
-  if (kind === "open") {
+  if (kind === "open" || kind === "cloud" || kind === "qa") {
     const text = cleanText(value.text, 300);
     return text ? { optionIds: [], text } : null;
   }
@@ -466,7 +469,14 @@ export async function createPollAction(input: {
               max: cleanText(question.scaleLabels.max, 60) ?? "",
             }
           : null,
-      visual: kind === "open" ? (question.visual === "list" ? "list" : "cloud") : null,
+      visual:
+        kind === "cloud"
+          ? "cloud"
+          : kind === "open"
+            ? question.visual === "cloud"
+              ? "cloud"
+              : "list"
+            : null,
       timeLimit: Math.max(0, Math.min(600, Math.round(Number(question.timeLimit) || 0))),
       points: Math.max(0, Math.min(1000, Math.round(Number(question.points) || 0))),
     });
@@ -508,9 +518,69 @@ export async function createPollAction(input: {
   return { ok: true, pollId, sessionId, code, questionIds };
 }
 
-/** Состояние живой сессии: запуск, переход по вопросам, приём ответов, завершение. */
-export async function updatePollSessionAction(input: {
+/* --- Авто-закрытие вопроса по времени ----------------------------------- */
+
+const globalAutoClose = globalThis as unknown as {
+  __mashukAutoClose?: Map<string, ReturnType<typeof setTimeout>>;
+};
+
+function autoCloseTimers(): Map<string, ReturnType<typeof setTimeout>> {
+  if (!globalAutoClose.__mashukAutoClose) globalAutoClose.__mashukAutoClose = new Map();
+  return globalAutoClose.__mashukAutoClose;
+}
+
+function clearAutoClose(sessionId: string): void {
+  const timers = autoCloseTimers();
+  const existing = timers.get(sessionId);
+  if (existing) {
+    clearTimeout(existing);
+    timers.delete(sessionId);
+  }
+}
+
+/**
+ * Сервер сам закрывает приём ответов, когда у текущего вопроса вышло время.
+ * Платформа живёт в одном процессе, поэтому обычного setTimeout достаточно;
+ * при нескольких экземплярах здесь понадобится общая очередь.
+ */
+function scheduleAutoClose(input: {
   programSlug: string;
+  sessionId: string;
+  seconds: number;
+  currentIndex: number;
+  showResults: boolean;
+}): void {
+  const timers = autoCloseTimers();
+  const timer = setTimeout(
+    async () => {
+      timers.delete(input.sessionId);
+      const db = getDb();
+      if (!db) return;
+      try {
+        await db
+          .update(schema.pollSessions)
+          .set({ accepting: false })
+          .where(eq(schema.pollSessions.id, input.sessionId));
+        publish({
+          type: "poll-session",
+          programSlug: input.programSlug,
+          sessionId: input.sessionId,
+          status: "live",
+          currentIndex: input.currentIndex,
+          accepting: false,
+          showResults: input.showResults,
+        });
+      } catch {
+        // база недоступна — состояние перечитается при следующем действии
+      }
+    },
+    Math.min(input.seconds, 600) * 1000 + 500,
+  );
+  timers.set(input.sessionId, timer);
+}
+
+/** Состояние живой сессии: запуск, переход по вопросам, приём ответов, завершение. */
+export async function updatePollSessionAction(input: {  programSlug: string;
   sessionId: string;
   status: "draft" | "live" | "finished";
   currentIndex: number;
@@ -528,6 +598,7 @@ export async function updatePollSessionAction(input: {
   const [session] = await db
     .select({
       id: schema.pollSessions.id,
+      pollId: schema.pollSessions.pollId,
       status: schema.pollSessions.status,
       questions: sql<number>`(select count(*)::int from poll_questions q where q.poll_id = ${schema.pollSessions.pollId})`,
     })
@@ -564,6 +635,31 @@ export async function updatePollSessionAction(input: {
     .where(eq(schema.pollSessions.id, session.id));
 
   publish({ type: "poll-session", programSlug: input.programSlug, sessionId: session.id, ...state });
+
+  // Таймер вопроса: по истечении сервер сам закрывает приём ответов
+  clearAutoClose(session.id);
+  if (state.accepting) {
+    const [currentQuestion] = await db
+      .select({ timeLimit: schema.pollQuestions.timeLimit })
+      .from(schema.pollQuestions)
+      .where(
+        and(
+          eq(schema.pollQuestions.pollId, session.pollId),
+          eq(schema.pollQuestions.position, currentIndex),
+        ),
+      )
+      .limit(1);
+    if (currentQuestion && currentQuestion.timeLimit > 0) {
+      scheduleAutoClose({
+        programSlug: input.programSlug,
+        sessionId: session.id,
+        seconds: currentQuestion.timeLimit,
+        currentIndex,
+        showResults: state.showResults,
+      });
+    }
+  }
+
   return { ok: true };
 }
 

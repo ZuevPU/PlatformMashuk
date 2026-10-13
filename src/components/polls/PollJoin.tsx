@@ -176,6 +176,7 @@ export function PollJoin({
           secondsLeft={secondsLeft}
           onSubmit={submit}
           showHint={false}
+          variant="full"
         />
       ) : (
         <div className="card p-7 text-center">

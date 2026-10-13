@@ -201,7 +201,7 @@ export const REACTION_SET = ["👍", "❤️", "🔥", "👏", "🎯", "🤔"] a
    ========================================================================== */
 
 /** Тип вопроса: то, что выбирает автор опроса в конструкторе. */
-export type QuestionKind = "single" | "multiple" | "open" | "scale" | "quiz";
+export type QuestionKind = "single" | "multiple" | "open" | "cloud" | "qa" | "scale" | "quiz";
 
 /** Как показывать открытые ответы: списком или облаком слов. */
 export type OpenVisual = "cloud" | "list";
@@ -293,7 +293,9 @@ export interface PollData {
 export const QUESTION_KIND_LABELS: Record<QuestionKind, string> = {
   single: "Один вариант",
   multiple: "Несколько вариантов",
-  open: "Открытый ответ",
+  open: "Список ответов",
+  cloud: "Облако слов",
+  qa: "Вопросы и ответы",
   scale: "Шкала 1–5",
   quiz: "Вопрос квиза",
 };
@@ -301,7 +303,9 @@ export const QUESTION_KIND_LABELS: Record<QuestionKind, string> = {
 export const QUESTION_KIND_HINTS: Record<QuestionKind, string> = {
   single: "Участник выбирает один вариант из списка",
   multiple: "Можно отметить несколько вариантов",
-  open: "Свободный текст: показывается списком или облаком слов",
+  open: "Свободный текст: показывается списком",
+  cloud: "Свободный текст: показывается облаком слов",
+  qa: "Зал задаёт вопросы — они появляются списком на экране",
   scale: "Оценка по пятибалльной шкале со средним значением",
   quiz: "Один верный вариант, очки и лидерборд на экране",
 };

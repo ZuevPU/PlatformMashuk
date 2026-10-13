@@ -4,21 +4,15 @@ import { ButtonLink } from "@/components/ui/Button";
 import { getSessionUser, homeFor } from "@/lib/auth";
 import { listManagedPrograms } from "@/lib/admin";
 
-const NAV = [
-  { href: "/#programs", label: "Программы" },
-  { href: "/#how", label: "Как это работает" },
-  { href: "/#archive", label: "Архив" },
-];
+const NAV = [{ href: "/#programs", label: "Программы" }];
 
 export async function SiteHeader() {
-  // Вошедший видит путь к своей программе или к управлению, а не «Войти»
+  // «Кабинет» ведёт вошедшего в его программу или в управление, а гостя — на вход
   const user = await getSessionUser();
-  let action = { href: "/join", label: "Войти" };
+  let action = { href: "/join" };
   if (user) {
     const manages = user.isCenterAdmin || (await listManagedPrograms(user)).length > 0;
-    action = manages
-      ? { href: "/admin", label: "Управление" }
-      : { href: await homeFor(user.member.id, false), label: "Моя программа" };
+    action = { href: manages ? "/admin" : await homeFor(user.member.id, false) };
   }
 
   return (
@@ -44,7 +38,7 @@ export async function SiteHeader() {
         </nav>
 
         <ButtonLink href={action.href} className="ml-auto md:ml-0" size="sm">
-          {action.label}
+          Кабинет
         </ButtonLink>
       </div>
     </header>

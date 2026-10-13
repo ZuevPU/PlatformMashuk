@@ -72,16 +72,6 @@ export function ProgramCard({ program }: { program: ProgramView }) {
           <ButtonLink href={`/programs/${program.slug}`} size="sm">
             Открыть программу
           </ButtonLink>
-          {program.landing && (
-            <ButtonLink
-              href={program.landing.url}
-              variant="outline"
-              size="sm"
-              external
-            >
-              Итоги
-            </ButtonLink>
-          )}
         </div>
       </div>
     </article>

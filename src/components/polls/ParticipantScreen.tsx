@@ -16,12 +16,14 @@ interface ParticipantScreenProps {
   /** Подпись «так это выглядит на телефоне» — на экране ведущего она уместна,
    * на отдельной странице входа в опрос — нет. */
   showHint?: boolean;
+  /** preview — карточка-телефон рядом с ведущим; full — крупный экран участника. */
+  variant?: "preview" | "full";
 }
 
 /**
- * Экран участника: то, что человек видит на телефоне после ввода кода.
- * В демонстрационном режиме показывается рядом с экраном ведущего —
- * ответ отсюда сразу попадает в результаты.
+ * Экран участника: то, что человек видит на телефоне после входа в опрос.
+ * Типы «облако слов» и «список» — свободный текст; Q&A позволяет задавать
+ * вопросы много раз, поэтому форма не блокируется после отправки.
  */
 export function ParticipantScreen({
   poll,
@@ -31,21 +33,28 @@ export function ParticipantScreen({
   secondsLeft,
   onSubmit,
   showHint = true,
+  variant = "preview",
 }: ParticipantScreenProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [text, setText] = useState("");
   const [scale, setScale] = useState<number | null>(null);
+  const [sentCount, setSentCount] = useState(0);
+
+  const isQa = question.kind === "qa";
+  const isText = question.kind === "open" || question.kind === "cloud" || isQa;
+  const full = variant === "full";
 
   useEffect(() => {
     setSelected([]);
     setText("");
     setScale(null);
+    setSentCount(0);
   }, [question.id]);
 
-  const answered = hasAnswered(session, question.id, currentUser.id);
+  const answered = !isQa && hasAnswered(session, question.id, currentUser.id);
 
   const value: AnswerValue | null = (() => {
-    if (question.kind === "open") return text.trim() ? { optionIds: [], text: text.trim() } : null;
+    if (isText) return text.trim() ? { optionIds: [], text: text.trim() } : null;
     if (question.kind === "scale") return scale ? { optionIds: [], scale } : null;
     return selected.length > 0 ? { optionIds: selected } : null;
   })();
@@ -61,6 +70,153 @@ export function ParticipantScreen({
     }
     setSelected([optionId]);
   };
+
+  const submit = () => {
+    if (!value) return;
+    onSubmit(value);
+    if (isQa) {
+      setText("");
+      setSentCount((count) => count + 1);
+    }
+  };
+
+  const body = (
+    <>
+      {session.status !== "live" ? (
+        <State
+          title={session.status === "draft" ? "Опрос ещё не начался" : "Опрос завершён"}
+          text={
+            session.status === "draft"
+              ? "Ведущий запустит вопросы — экран обновится автоматически."
+              : "Спасибо за участие. Результаты уже собраны ведущим."
+          }
+        />
+      ) : answered ? (
+        <State
+          title="Ответ принят"
+          text="Можно отложить телефон и вернуться к обсуждению."
+          success
+        />
+      ) : !session.accepting ? (
+        <State title="Приём ответов закрыт" text="Ведущий закрыл вопрос — ждём следующий." />
+      ) : (
+        <>
+          <p className="m-0 mb-1 text-micro font-semibold tracking-[0.12em] text-gold-ink uppercase">
+            {QUESTION_KIND_LABELS[question.kind]}
+            {secondsLeft !== null ? ` · ${secondsLeft} с` : ""}
+          </p>
+          <h3
+            className={[
+              "m-0 mb-4 font-display leading-snug font-semibold tracking-[-0.03em] text-navy",
+              full ? "text-[clamp(22px,5vw,34px)]" : "text-subtitle",
+            ].join(" ")}
+          >
+            {question.title}
+          </h3>
+
+          {isText ? (
+            <textarea
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              rows={full ? 3 : 4}
+              placeholder={question.hint ?? (isQa ? "Ваш вопрос" : "Ваш ответ")}
+              className="w-full resize-none rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-ui leading-relaxed outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy focus:border-navy"
+            />
+          ) : question.kind === "scale" ? (
+            <div>
+              <div className="flex gap-2">
+                {[1, 2, 3, 4, 5].map((value2) => (
+                  <button
+                    key={value2}
+                    type="button"
+                    onClick={() => setScale(value2)}
+                    className={[
+                      "grid flex-1 cursor-pointer place-items-center rounded-field border font-semibold transition-all duration-200 ease-brand",
+                      full ? "h-16 text-title" : "h-14 text-subtitle",
+                      scale === value2
+                        ? "border-transparent text-on-accent"
+                        : "border-[var(--line)] bg-white text-navy hover:-translate-y-0.5",
+                    ].join(" ")}
+                    style={scale === value2 ? { background: "var(--accent)" } : undefined}
+                  >
+                    {value2}
+                  </button>
+                ))}
+              </div>
+              {question.scaleLabels && (
+                <div className="mt-2.5 flex justify-between text-micro text-ink-faint">
+                  <span>{question.scaleLabels.min}</span>
+                  <span>{question.scaleLabels.max}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {question.options.map((option) => {
+                const active = selected.includes(option.id);
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => toggleOption(option.id)}
+                    className={[
+                      "cursor-pointer rounded-field border px-4 text-left leading-snug transition-all duration-200 ease-brand",
+                      full ? "py-4 text-lead" : "py-3 text-ui",
+                      active
+                        ? "border-transparent text-on-accent"
+                        : "border-[var(--line)] bg-white text-ink hover:-translate-y-0.5",
+                    ].join(" ")}
+                    style={active ? { background: "var(--color-navy)" } : undefined}
+                  >
+                    {option.text}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={!value}
+            onClick={submit}
+            className={[
+              "inline-flex cursor-pointer items-center justify-center gap-2 rounded-full bg-navy font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep disabled:cursor-not-allowed disabled:opacity-40",
+              full ? "mt-4 min-h-12 w-full text-lead" : "mt-5 min-h-12 w-full text-ui",
+            ].join(" ")}
+          >
+            <Send size={15} />
+            {isQa ? "Задать вопрос" : "Отправить ответ"}
+          </button>
+
+          {isQa && sentCount > 0 && (
+            <p className="m-0 mt-3 text-center text-micro font-semibold text-sky-ink">
+              Отправлено: {sentCount}
+            </p>
+          )}
+
+          <p className="m-0 mt-3 text-center text-micro text-ink-faint">
+            {poll.anonymous
+              ? "Ответ анонимный: ведущий не увидит, кто его отправил"
+              : `Ответ от имени ${currentUser.name}`}
+          </p>
+        </>
+      )}
+    </>
+  );
+
+  if (full) {
+    return (
+      <div className="mx-auto w-full max-w-130">
+        <div className="mb-5">
+          <p className="eyebrow mb-1">Опрос программы</p>
+          <p className="m-0 font-display text-lead font-semibold tracking-[-0.02em] text-navy">
+            {poll.title}
+          </p>
+        </div>
+        <div className="flex min-h-70 flex-col">{body}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-95">
@@ -84,111 +240,7 @@ export function ParticipantScreen({
           <p className="m-0 text-ui leading-snug font-medium text-white">{poll.title}</p>
         </div>
 
-        <div className="flex min-h-95 flex-col p-5">
-          {session.status !== "live" ? (
-            <State
-              title={session.status === "draft" ? "Опрос ещё не начался" : "Опрос завершён"}
-              text={
-                session.status === "draft"
-                  ? "Ведущий запустит вопросы — экран обновится автоматически."
-                  : "Спасибо за участие. Результаты уже собраны ведущим."
-              }
-            />
-          ) : answered ? (
-            <State
-              title="Ответ принят"
-              text="Можно отложить телефон и вернуться к обсуждению."
-              success
-            />
-          ) : !session.accepting ? (
-            <State title="Приём ответов закрыт" text="Ведущий закрыл вопрос — ждём следующий." />
-          ) : (
-            <>
-              <p className="m-0 mb-1 text-micro font-semibold tracking-[0.12em] text-gold-ink uppercase">
-                {QUESTION_KIND_LABELS[question.kind]}
-                {secondsLeft !== null ? ` · ${secondsLeft} с` : ""}
-              </p>
-              <h3 className="m-0 mb-4 font-display text-subtitle leading-snug font-semibold tracking-[-0.02em] text-navy">
-                {question.title}
-              </h3>
-
-              {question.kind === "open" ? (
-                <textarea
-                  value={text}
-                  onChange={(event) => setText(event.target.value)}
-                  rows={4}
-                  placeholder={question.hint ?? "Ваш ответ"}
-                  className="w-full resize-none rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-ui leading-relaxed outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy focus:border-navy"
-                />
-              ) : question.kind === "scale" ? (
-                <div>
-                  <div className="flex gap-2">
-                    {[1, 2, 3, 4, 5].map((value2) => (
-                      <button
-                        key={value2}
-                        type="button"
-                        onClick={() => setScale(value2)}
-                        className={[
-                          "grid h-14 flex-1 cursor-pointer place-items-center rounded-field border text-subtitle font-semibold transition-all duration-200 ease-brand",
-                          scale === value2
-                            ? "border-transparent text-on-accent"
-                            : "border-[var(--line)] bg-white text-navy hover:-translate-y-0.5",
-                        ].join(" ")}
-                        style={scale === value2 ? { background: "var(--accent)" } : undefined}
-                      >
-                        {value2}
-                      </button>
-                    ))}
-                  </div>
-                  {question.scaleLabels && (
-                    <div className="mt-2.5 flex justify-between text-micro text-ink-faint">
-                      <span>{question.scaleLabels.min}</span>
-                      <span>{question.scaleLabels.max}</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {question.options.map((option) => {
-                    const active = selected.includes(option.id);
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => toggleOption(option.id)}
-                        className={[
-                          "cursor-pointer rounded-field border px-4 py-3 text-left text-ui leading-snug transition-all duration-200 ease-brand",
-                          active
-                            ? "border-transparent text-on-accent"
-                            : "border-[var(--line)] bg-white text-ink hover:-translate-y-0.5",
-                        ].join(" ")}
-                        style={active ? { background: "var(--color-navy)" } : undefined}
-                      >
-                        {option.text}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              <button
-                type="button"
-                disabled={!value}
-                onClick={() => value && onSubmit(value)}
-                className="mt-5 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-full bg-navy text-ui font-semibold text-white transition-all duration-200 ease-brand hover:bg-navy-deep disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Send size={15} />
-                Отправить ответ
-              </button>
-
-              <p className="m-0 mt-3 text-center text-micro text-ink-faint">
-                {poll.anonymous
-                  ? "Ответ анонимный: ведущий не увидит, кто его отправил"
-                  : `Ответ от имени ${currentUser.name}`}
-              </p>
-            </>
-          )}
-        </div>
+        <div className="flex min-h-95 flex-col p-5">{body}</div>
       </div>
     </div>
   );

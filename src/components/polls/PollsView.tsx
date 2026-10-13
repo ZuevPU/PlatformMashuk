@@ -426,6 +426,7 @@ export function PollsView({
                 currentUser={currentUser}
                 secondsLeft={secondsLeft}
                 onSubmit={submitAnswer}
+                variant={canManage ? "preview" : "full"}
               />
             ) : (
               <p className="m-0 text-meta text-ink-faint">В опросе нет вопросов.</p>

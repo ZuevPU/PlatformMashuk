@@ -23,7 +23,7 @@ interface PollBuilderProps {
   onCancel: () => void;
 }
 
-const KINDS: QuestionKind[] = ["single", "multiple", "open", "scale", "quiz"];
+const KINDS: QuestionKind[] = ["single", "multiple", "open", "cloud", "qa", "scale", "quiz"];
 
 function uid(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
@@ -34,7 +34,13 @@ function blankQuestion(kind: QuestionKind): Question {
   const base = { id, kind, title: "", options: [], timeLimit: 0, points: 0 } as Question;
 
   if (kind === "open") {
+    return { ...base, visual: "list", hint: "Короткий ответ" };
+  }
+  if (kind === "cloud") {
     return { ...base, visual: "cloud", hint: "Одно слово или короткая фраза" };
+  }
+  if (kind === "qa") {
+    return { ...base, hint: "Ваш вопрос ведущему" };
   }
   if (kind === "scale") {
     return { ...base, scaleLabels: { min: "совсем нет", max: "полностью да" } };
@@ -438,26 +444,6 @@ export function PollBuilder({
                   className={inputClass}
                 />
               </label>
-            </div>
-          )}
-
-          {question.kind === "open" && (
-            <div className="flex flex-wrap gap-2">
-              {(["cloud", "list"] as const).map((visual) => (
-                <button
-                  key={visual}
-                  type="button"
-                  onClick={() => updateQuestion(index, { visual })}
-                  className={[
-                    "min-h-9 cursor-pointer rounded-full border px-3.5 text-caption font-semibold transition-all duration-200 ease-brand",
-                    question.visual === visual
-                      ? "border-navy bg-navy text-white"
-                      : "border-[var(--line)] bg-white text-navy hover:-translate-y-0.5",
-                  ].join(" ")}
-                >
-                  {visual === "cloud" ? "Облако слов" : "Список ответов"}
-                </button>
-              ))}
             </div>
           )}
 
