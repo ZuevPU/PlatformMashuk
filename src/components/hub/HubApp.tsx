@@ -148,6 +148,14 @@ export function HubApp({
     setPosts(applyPending(parts.channel, pendingOps.current));
   }, [parts.channel]);
 
+  // На телефоне меню — горизонтальная лента: активная вкладка всегда в поле зрения
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    navRef.current
+      ?.querySelector('[aria-current="page"]')
+      ?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+  }, [section]);
+
   const openSection = (next: HubSection) => {
     setSection(next);
     // Ссылку на раздел можно переслать: /hub?tab=chats
@@ -278,18 +286,18 @@ export function HubApp({
     >
       <div className="wrap">
         {/* ------------------------------------------------------ Верхняя строка */}
-        <div className="mb-7 flex flex-wrap items-start justify-between gap-5">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-4 lg:mb-7 lg:gap-5">
           <div className="min-w-0">
             <Link
               href={`/programs/${program.slug}`}
-              className="mb-3 inline-flex items-center gap-2 text-meta font-medium text-ink-soft no-underline transition-colors duration-200 hover:text-navy"
+              className="mb-2 inline-flex items-center gap-2 text-meta font-medium text-ink-soft no-underline transition-colors duration-200 hover:text-navy lg:mb-3"
             >
               <ArrowLeft size={14} />
               К странице программы
             </Link>
             <div className="flex flex-wrap items-center gap-3">
               <StatusChip status={program.status} />
-              <span className="text-micro font-semibold tracking-[0.16em] text-gold-ink uppercase">
+              <span className="hidden text-micro font-semibold tracking-[0.16em] text-gold-ink uppercase sm:inline">
                 {program.subtitle}
                 {program.stream ? ` · ${program.stream}` : ""}
               </span>
@@ -299,28 +307,30 @@ export function HubApp({
             </h1>
           </div>
 
+          {/* На телефоне — одна строка, на широком экране — карточка */}
           <div
-            className="rounded-soft border border-[var(--line)] bg-white p-3.5"
+            className="flex w-full items-center gap-3 rounded-soft border border-[var(--line)] bg-white px-3.5 py-2.5 lg:block lg:w-auto lg:p-3.5"
             data-session-user={session.memberId}
             data-session-role={session.role}
           >
-            <p className="m-0 mb-2.5 text-micro font-semibold tracking-[0.12em] text-gold-ink uppercase">
+            <p className="m-0 mb-2.5 hidden text-micro font-semibold tracking-[0.12em] text-gold-ink uppercase lg:block">
               Вы вошли как
             </p>
-            <p className="m-0 mb-1 font-display text-lead font-semibold tracking-[-0.02em] text-navy">
+            <p className="m-0 min-w-0 flex-1 truncate font-display text-ui font-semibold tracking-[-0.02em] text-navy lg:mb-1 lg:text-lead">
               {session.name}
             </p>
-            <p className="m-0 mb-3 text-caption text-ink-faint">
+            <p className="m-0 mb-3 hidden text-caption text-ink-faint lg:block">
               {MEMBER_ROLE_LABELS[session.role]} программы
             </p>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex shrink-0 gap-2">
               {staff && (
                 <Link
                   href={`/admin/programs/${program.slug}`}
                   className="inline-flex min-h-9 items-center gap-2 rounded-full bg-navy px-3.5 text-caption font-semibold text-white no-underline transition-all duration-200 ease-brand hover:-translate-y-0.5 hover:bg-navy-deep"
                 >
                   <Settings size={13} />
-                  Управление
+                  <span className="hidden sm:inline">Управление</span>
+                  <span className="sr-only sm:hidden">Управление</span>
                 </Link>
               )}
               <form action={logoutAction}>
@@ -329,7 +339,8 @@ export function HubApp({
                   className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3.5 text-caption font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
                 >
                   <LogOut size={13} />
-                  Выйти
+                  <span className="hidden sm:inline">Выйти</span>
+                  <span className="sr-only sm:hidden">Выйти</span>
                 </button>
               </form>
             </div>
@@ -352,9 +363,13 @@ export function HubApp({
           </div>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-[280px_1fr] lg:items-start">
-          <aside className="flex flex-col gap-4 lg:sticky lg:top-24">
-            <nav className="card gap-1 p-3" aria-label="Разделы программы">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start lg:gap-6">
+          <aside className="sticky top-19 z-10 flex min-w-0 flex-col gap-4 lg:top-24">
+            <nav
+              ref={navRef}
+              className="card flex-row gap-1 overflow-x-auto p-1.5 [scrollbar-width:none] lg:flex-col lg:overflow-visible lg:p-3"
+              aria-label="Разделы программы"
+            >
               <NavItem
                 active={section === "channel"}
                 onClick={() => openSection("channel")}
@@ -403,7 +418,7 @@ export function HubApp({
               {program.materialsCount > 0 && (
                 <Link
                   href={`/programs/${program.slug}#materials`}
-                  className="flex items-center gap-2.5 rounded-field px-3.5 py-2.5 text-meta font-medium text-ink-soft no-underline transition-colors duration-200 hover:bg-sky-tint hover:text-navy"
+                  className="flex shrink-0 items-center gap-2.5 rounded-field px-3.5 py-2.5 text-meta font-medium whitespace-nowrap text-ink-soft no-underline transition-colors duration-200 hover:bg-sky-tint hover:text-navy"
                 >
                   <FileText size={16} />
                   Материалы программы
@@ -412,7 +427,7 @@ export function HubApp({
               )}
             </nav>
 
-            <div className="card gap-3.5 p-5 text-meta">
+            <div className="card hidden gap-3.5 p-5 text-meta lg:flex">
               <p className="eyebrow mb-0">Программа</p>
               <ul className="m-0 grid list-none gap-3 p-0">
                 <li className="flex items-start gap-2.5 text-ink-soft">
@@ -579,7 +594,7 @@ function NavItem({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={[
-        "flex cursor-pointer items-center gap-2.5 rounded-field px-3.5 py-2.5 text-left text-meta font-medium transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy",
+        "flex shrink-0 cursor-pointer items-center gap-2.5 rounded-field px-3.5 py-2.5 text-left text-meta font-medium whitespace-nowrap transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy",
         active ? "bg-navy text-white" : "text-ink-soft hover:bg-sky-tint hover:text-navy",
       ].join(" ")}
     >
