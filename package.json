@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Цифровая экосистема сопровождения слушателей АНО «Центр знаний «Машук»",
+  "packageManager": "pnpm@12.11.2",
   "scripts": {
     "dev": "next dev -p 4321",
     "build": "next build",
