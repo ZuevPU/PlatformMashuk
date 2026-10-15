@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink } from "lucide-react";
-import { requireProgramStaff } from "@/lib/admin";
+import { getProgramStats, requireProgramStaff } from "@/lib/admin";
 import { loadProgram } from "@/lib/db/queries";
 import { formatDateRange } from "@/lib/dates";
 import { SEASONS } from "@/lib/brand";
@@ -16,10 +16,11 @@ export default async function AdminProgramLayout({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  await requireProgramStaff(slug);
+  const staff = await requireProgramStaff(slug);
   const program = await loadProgram(slug);
   if (!program) notFound();
   const season = SEASONS[program.season];
+  const stats = await getProgramStats(staff.programId);
 
   return (
     <div className="lg:grid lg:grid-cols-[264px_minmax(0,1fr)]">
@@ -53,6 +54,12 @@ export default async function AdminProgramLayout({
             <Link href={`/programs/${slug}/hub`} className="inline-flex items-center gap-1.5 text-navy">
               Рабочее пространство: чат и опросы
             </Link>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-meta text-ink-faint">
+            <span>{stats.posts} постов</span>
+            <span>{stats.comments} комментариев</span>
+            <span>{stats.members} участников</span>
           </div>
         </header>
 

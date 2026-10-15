@@ -24,10 +24,8 @@ import { useLiveHub } from "./useLiveHub";
 import { ChatView } from "@/components/chat/ChatView";
 import { PollsView } from "@/components/polls/PollsView";
 import { DaySchedule } from "@/components/programs/DaySchedule";
-import { StatusChip } from "@/components/programs/StatusChip";
 import {
-  addCommentAction,
-  createPostAction,
+  addCommentAction,  createPostAction,
   deletePostAction,
   togglePinAction,
   toggleReactionAction,
@@ -386,21 +384,11 @@ export function HubApp({
           <div className="min-w-0">
             <Link
               href={`/programs/${program.slug}`}
-              className="mb-2 inline-flex items-center gap-2 text-meta font-medium text-ink-soft no-underline transition-colors duration-200 hover:text-navy lg:mb-3"
+              className="inline-flex items-center gap-2 text-meta font-medium text-ink-soft no-underline transition-colors duration-200 hover:text-navy"
             >
               <ArrowLeft size={14} />
               К странице программы
             </Link>
-            <div className="flex flex-wrap items-center gap-3">
-              <StatusChip status={program.status} />
-              <span className="hidden text-micro font-semibold tracking-[0.16em] text-gold-ink uppercase sm:inline">
-                {program.subtitle}
-                {program.stream ? ` · ${program.stream}` : ""}
-              </span>
-            </div>
-            <h1 className="m-0 mt-2.5 font-display text-[clamp(28px,4vw,44px)] leading-[1.02] font-semibold tracking-[-0.05em] text-navy">
-              {program.title}
-            </h1>
           </div>
 
           {/* Управление и личный кабинет */}
@@ -484,6 +472,7 @@ export function HubApp({
                 members={members}
                 mentionNames={names}
                 currentUser={currentUser}
+                programTitle={program.title}
                 canPost={staff}
                 canModerate={staff}
                 onPublish={publish}

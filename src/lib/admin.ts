@@ -128,6 +128,34 @@ export async function requireProgramStaff(slug: string): Promise<ProgramStaff> {
   return staff;
 }
 
+export interface ProgramStats {
+  posts: number;
+  comments: number;
+  members: number;
+}
+
+/** Короткая сводка по программе для админки: посты, комментарии, состав. */
+export async function getProgramStats(programId: number): Promise<ProgramStats> {
+  const db = getDb();
+  if (!db) return { posts: 0, comments: 0, members: 0 };
+
+  const [row] = await db
+    .select({
+      posts: sql<number>`(select count(*)::int from posts where program_id = ${programId})`,
+      comments: sql<number>`(select count(*)::int from comments c join posts p on p.id = c.post_id where p.program_id = ${programId})`,
+      members: sql<number>`(select count(*)::int from program_members where program_id = ${programId})`,
+    })
+    .from(schema.programs)
+    .where(eq(schema.programs.id, programId))
+    .limit(1);
+
+  return {
+    posts: Number(row?.posts ?? 0),
+    comments: Number(row?.comments ?? 0),
+    members: Number(row?.members ?? 0),
+  };
+}
+
 export interface AdminMember {
   id: string;
   name: string;
