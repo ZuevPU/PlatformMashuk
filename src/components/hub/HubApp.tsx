@@ -15,7 +15,6 @@ import {
   MessagesSquare,
   Megaphone,
   Settings,
-  UserRound,
   Users,
 } from "lucide-react";
 import { Channel } from "./Channel";
@@ -419,13 +418,6 @@ export function HubApp({
                 Управление
               </Link>
             )}
-            <Link
-              href="/cabinet"
-              className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 text-caption font-semibold text-navy no-underline transition-all duration-200 ease-brand hover:-translate-y-0.5"
-            >
-              <UserRound size={14} />
-              Личный кабинет
-            </Link>
           </div>
         </div>
 

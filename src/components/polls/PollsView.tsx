@@ -15,7 +15,7 @@ import { ParticipantScreen } from "./ParticipantScreen";
 import { PollBuilder } from "./PollBuilder";
 import { PollPresentation } from "./PollPresentation";
 import { PresenterScreen } from "./PresenterScreen";
-import { Leaderboard, QuestionResults } from "./QuestionResults";
+import { QuestionResults } from "./QuestionResults";
 import {
   activeQuestion,
   addResponse,
@@ -408,26 +408,28 @@ export function PollsView({
             onVote={voteQa}
           />
         )}
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setView("list")}
-            className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3.5 text-caption font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
-          >
-            <ChevronLeft size={14} />
-            К списку опросов
-          </button>
-          <span className="rounded-full bg-[var(--color-sky-tint)] px-3 py-1.5 text-caption font-semibold text-sky-ink">
-            {SESSION_LABELS[activeSession.status]}
-          </span>
-          {activePoll.anonymous && <span className="tag">анонимный</span>}
-          <span className="text-caption text-ink-faint">
-            Ответов на текущий вопрос: {responses}
-          </span>
-        </div>
+        {canManage && (
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3.5 text-caption font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
+            >
+              <ChevronLeft size={14} />
+              К списку опросов
+            </button>
+            <span className="rounded-full bg-[var(--color-sky-tint)] px-3 py-1.5 text-caption font-semibold text-sky-ink">
+              {SESSION_LABELS[activeSession.status]}
+            </span>
+            {activePoll.anonymous && <span className="tag">анонимный</span>}
+            <span className="text-caption text-ink-faint">
+              Ответов на текущий вопрос: {responses}
+            </span>
+          </div>
+        )}
 
-        <div className="flex flex-col gap-5">
-          {canManage ? (
+        {canManage ? (
+          <div className="flex flex-col gap-5">
             <PresenterScreen
               poll={activePoll}
               session={activeSession}
@@ -453,66 +455,67 @@ export function PollsView({
               onModerate={moderateQaResponse}
               onVote={voteQa}
             />
-          ) : (
-            <div className="flex flex-col gap-4">
-              {question && (
-                <section className="card p-6">
-                  <p className="eyebrow mb-2">Вопрос {activeSession.currentIndex + 1}</p>
-                  <h2 className="m-0 mb-4 font-display text-[clamp(20px,2.6vw,28px)] leading-tight font-semibold tracking-[-0.035em] text-navy">
-                    {question.title}
-                  </h2>
-                  {activeSession.showResults ? (
-                    <QuestionResults
-                      poll={activePoll}
-                      question={question}
-                      session={activeSession}
-                      members={members}
-                      anonymous={activePoll.anonymous}
-                      onVote={voteQa}
-                    />
-                  ) : (
-                    <p className="m-0 text-meta text-ink-faint">
-                      Результаты появятся на экране, когда ведущий их откроет.
-                    </p>
-                  )}
-                </section>
-              )}
-              {question?.kind === "quiz" && activeSession.showResults && (
-                <Leaderboard poll={activePoll} session={activeSession} members={members} compact />
-              )}
-            </div>
-          )}
 
-          <div
-            className={
-              canManage
-                ? "grid gap-4 md:grid-cols-[minmax(0,380px)_minmax(0,1fr)] md:items-start"
-                : "flex flex-col gap-3"
-            }
-          >
-            {question ? (
-              <ParticipantScreen
-                poll={activePoll}
-                question={question}
-                session={activeSession}
-                currentUser={currentUser}
-                secondsLeft={secondsLeft}
-                onSubmit={submitAnswer}
-                variant={canManage ? "preview" : "full"}
-              />
-            ) : (
-              <p className="m-0 text-meta text-ink-faint">В опросе нет вопросов.</p>
+            <div className="grid gap-4 md:grid-cols-[minmax(0,380px)_minmax(0,1fr)] md:items-start">
+              {question ? (
+                <ParticipantScreen
+                  poll={activePoll}
+                  question={question}
+                  session={activeSession}
+                  currentUser={currentUser}
+                  secondsLeft={secondsLeft}
+                  onSubmit={submitAnswer}
+                  variant="preview"
+                />
+              ) : (
+                <p className="m-0 text-meta text-ink-faint">В опросе нет вопросов.</p>
+              )}
+              <p className="m-0 rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-caption leading-relaxed text-ink-faint">
+                {pollError
+                  ? `Не удалось сохранить ответ: ${pollError}`
+                  : "Ответы участников появляются на экране в реальном времени. Слева — экран участника: можно ответить и самому."}
+              </p>
+            </div>
+          </div>
+        ) : question ? (
+          <div className="mx-auto flex w-full max-w-130 flex-col gap-5">
+            <ParticipantScreen
+              poll={activePoll}
+              question={question}
+              session={activeSession}
+              currentUser={currentUser}
+              secondsLeft={secondsLeft}
+              onSubmit={submitAnswer}
+              variant="full"
+            />
+
+            {responses > 0 && (
+              <details className="rounded-panel border border-[var(--line)] bg-white p-4">
+                <summary className="cursor-pointer text-meta font-semibold text-navy">
+                  Что отвечают другие
+                </summary>
+                <div className="mt-4">
+                  <QuestionResults
+                    poll={activePoll}
+                    question={question}
+                    session={activeSession}
+                    members={members}
+                    anonymous={activePoll.anonymous}
+                    onVote={voteQa}
+                  />
+                </div>
+              </details>
             )}
 
-            <p className="m-0 rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-caption leading-relaxed text-ink-faint">
-              {pollError
-                ? `Не удалось сохранить ответ: ${pollError}`
-                : canManage
-                  ? "Ответы участников появляются на экране в реальном времени. Справа — экран участника: можно ответить и самому."
-                  : "Ваш ответ отправляется ведущему и появляется на экране в зале."}
-            </p>
+            {pollError && (
+              <p role="alert" className="m-0 rounded-field bg-autumn/10 px-4 py-3 text-meta text-ink">
+                Не удалось отправить ответ: {pollError}
+              </p>
+            )}
           </div>
-        </div>
+        ) : (
+          <p className="m-0 text-meta text-ink-faint">В опросе нет вопросов.</p>
+        )}
       </div>
     );
   }

@@ -1,8 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { ParticipantScreen } from "./ParticipantScreen";
 import { QuestionResults } from "./QuestionResults";
 import {
@@ -169,17 +167,6 @@ export function PollJoin({
 
   return (
     <div className="mx-auto w-full max-w-120 px-4 py-6">
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <Link
-          href={`/programs/${programSlug}`}
-          className="inline-flex items-center gap-2 text-caption font-medium text-ink-soft no-underline transition-colors duration-200 hover:text-navy"
-        >
-          <ArrowLeft size={14} />
-          О программе
-        </Link>
-        <span className="truncate text-caption font-semibold text-gold-ink">{programTitle}</span>
-      </div>
-
       {question ? (
         <ParticipantScreen
           poll={poll}
@@ -197,18 +184,22 @@ export function PollJoin({
         </div>
       )}
 
-      {session.showResults && question && (
-        <section className="card mt-4 p-6">
-          <p className="eyebrow mb-3">Результаты</p>
-          <QuestionResults
-            poll={poll}
-            question={question}
-            session={session}
-            members={members}
-            anonymous={poll.anonymous}
-            onVote={vote}
-          />
-        </section>
+      {question && session.responses.some((item) => item.questionId === question.id) && (
+        <details className="mt-5 rounded-panel border border-[var(--line)] bg-white p-4">
+          <summary className="cursor-pointer text-meta font-semibold text-navy">
+            Что отвечают другие
+          </summary>
+          <div className="mt-4">
+            <QuestionResults
+              poll={poll}
+              question={question}
+              session={session}
+              members={members}
+              anonymous={poll.anonymous}
+              onVote={vote}
+            />
+          </div>
+        </details>
       )}
 
       {error && (
@@ -216,12 +207,6 @@ export function PollJoin({
           Не удалось отправить ответ: {error}
         </p>
       )}
-
-      <p className="mt-5 text-center text-micro leading-relaxed text-ink-faint">
-        {poll.anonymous
-          ? "Ответ анонимный — ведущий не увидит, кто его отправил."
-          : `Ответ от имени ${currentUser.name}.`}
-      </p>
     </div>
   );
 }

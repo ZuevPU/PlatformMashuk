@@ -119,10 +119,18 @@ export function ParticipantScreen({
         <State title="Приём ответов закрыт" text="Ведущий закрыл вопрос — ждём следующий." />
       ) : (
         <>
-          <p className="m-0 mb-1 text-micro font-semibold tracking-[0.12em] text-gold-ink uppercase">
-            {QUESTION_KIND_LABELS[question.kind]}
-            {secondsLeft !== null ? ` · ${secondsLeft} с` : ""}
-          </p>
+          {full ? (
+            secondsLeft !== null && (
+              <p className="m-0 mb-2 text-micro font-semibold tracking-[0.12em] text-gold-ink uppercase">
+                Осталось {secondsLeft} с
+              </p>
+            )
+          ) : (
+            <p className="m-0 mb-1 text-micro font-semibold tracking-[0.12em] text-gold-ink uppercase">
+              {QUESTION_KIND_LABELS[question.kind]}
+              {secondsLeft !== null ? ` · ${secondsLeft} с` : ""}
+            </p>
+          )}
           <h3
             className={[
               "m-0 mb-4 font-display leading-snug font-semibold tracking-[-0.03em] text-navy",
@@ -238,7 +246,7 @@ export function ParticipantScreen({
             ].join(" ")}
           >
             <Send size={15} />
-            {isQa ? "Задать вопрос" : "Отправить ответ"}
+            {isQa ? "Задать вопрос" : "Ответить"}
           </button>
 
           {isQa && sentCount > 0 && (
@@ -247,11 +255,13 @@ export function ParticipantScreen({
             </p>
           )}
 
-          <p className="m-0 mt-3 text-center text-micro text-ink-faint">
-            {poll.anonymous
-              ? "Ответ анонимный: ведущий не увидит, кто его отправил"
-              : `Ответ от имени ${currentUser.name}`}
-          </p>
+          {!full && (
+            <p className="m-0 mt-3 text-center text-micro text-ink-faint">
+              {poll.anonymous
+                ? "Ответ анонимный: ведущий не увидит, кто его отправил"
+                : `Ответ от имени ${currentUser.name}`}
+            </p>
+          )}
         </>
       )}
     </>
@@ -260,13 +270,7 @@ export function ParticipantScreen({
   if (full) {
     return (
       <div className="mx-auto w-full max-w-130">
-        <div className="mb-5">
-          <p className="eyebrow mb-1">Опрос программы</p>
-          <p className="m-0 font-display text-lead font-semibold tracking-[-0.02em] text-navy">
-            {poll.title}
-          </p>
-        </div>
-        <div className="flex min-h-70 flex-col">{body}</div>
+        <div className="flex flex-col">{body}</div>
       </div>
     );
   }
