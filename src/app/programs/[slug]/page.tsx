@@ -4,10 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ButtonLink } from "@/components/ui/Button";
 import { MountainLine } from "@/components/brand/MountainLine";
-import { DaySchedule } from "@/components/programs/DaySchedule";
 import { StatusChip } from "@/components/programs/StatusChip";
 import { getProgram } from "@/lib/data";
-import { SEASONS, seasonStyle } from "@/lib/brand";
+import { seasonStyle } from "@/lib/brand";
 import { DIRECTIONS } from "@/lib/types";
 import { durationDays, formatDateRange, relativeToStart } from "@/lib/dates";
 
@@ -35,7 +34,6 @@ export default async function ProgramPage({ params }: PageProps) {
 
   if (!program) notFound();
 
-  const season = SEASONS[program.season];
   const direction = DIRECTIONS.find((item) => item.key === program.direction);
   const days = durationDays(program.startDate, program.endDate);
   const seasonVars = seasonStyle(program.season) as CSSProperties;
@@ -74,11 +72,6 @@ export default async function ProgramPage({ params }: PageProps) {
             <ButtonLink href={enterHref} variant="light">
               Войти в программу
             </ButtonLink>
-            {program.days.length > 0 && (
-              <ButtonLink href="#schedule" variant="ghost">
-                Программа по дням
-              </ButtonLink>
-            )}
           </div>
 
           {program.hero.facts.length > 0 && (
@@ -150,22 +143,6 @@ export default async function ProgramPage({ params }: PageProps) {
           </div>
         </div>
       </section>
-
-      {/* --------------------------------------------------------- РАСПИСАНИЕ */}
-      {program.days.length > 0 && (
-        <section className="section pt-0" id="schedule">
-          <div className="wrap">
-            <div className="mb-9">
-              <p className="eyebrow">Программа</p>
-              <h2 className="section-title section-title--tight">
-                {days} {days === 1 ? "день" : days < 5 ? "дня" : "дней"} программы
-              </h2>
-            </div>
-
-            <DaySchedule days={program.days} accent={season.accent} />
-          </div>
-        </section>
-      )}
     </div>
   );
 }
