@@ -5,6 +5,7 @@ import {
   BarChart3,
   ChevronLeft,
   FileSpreadsheet,
+  Flag,
   Image as ImageIcon,
   Play,
   Plus,
@@ -199,6 +200,13 @@ export function PollsView({
     void deletePollAction({ programSlug, pollId: poll.id }).then((result) => {
       if (!result.ok) setPollError(result.error);
     });
+  };
+
+  /** Завершить опрос из списка: приём закрывается, результаты сохраняются. */
+  const finishPoll = (poll: Poll) => {
+    const session = sessions.find((item) => item.pollId === poll.id);
+    if (!session) return;
+    applySession(finishSession(session, localIsoNow()));
   };
 
   /** Модерация Q&A: скрыть вопрос или отметить отвеченным (команда программы). */
@@ -696,6 +704,16 @@ export function PollsView({
                       <ImageIcon size={14} />
                       Картинка
                     </button>
+                    {session.status === "live" && (
+                      <button
+                        type="button"
+                        onClick={() => finishPoll(poll)}
+                        className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border border-[var(--line)] bg-white px-4 text-meta font-semibold text-navy transition-all duration-200 ease-brand hover:-translate-y-0.5"
+                      >
+                        <Flag size={14} />
+                        Завершить опрос
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => deletePoll(poll)}
