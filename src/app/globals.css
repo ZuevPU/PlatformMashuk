@@ -1,0 +1,522 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   АНО «Центр знаний «Машук» — дизайн-система цифровой платформы
+   Источник правил: «Руководство по использованию фирменного стиля», 41 стр.
+   Визуальный язык страниц: база знаний программы (одностраничник на GitVerse Pages)
+   ========================================================================== */
+
+@theme {
+  /* --- Фирменная палитра: основные цвета (стр. 10–14) --- */
+  --color-navy: #223f9a;
+  --color-navy-deep: #192f78;
+  --color-navy-soft: #3159bd;
+  --color-teal: #0b4d4d;
+  --color-grey-brand: #dcdedd;
+  --color-ink: #332d24;
+  --color-ink-soft: #655d53;
+  --color-ink-muted: #696157;
+  --color-ink-faint: #71695e;
+  --color-black-ink: #0a1014;
+
+  /* --- Фирменная палитра: дополнительные цвета --- */
+  --color-sky: #54a4db;
+  --color-sky-light: #a8d9f7;
+  --color-sky-pale: #eaf4fb;
+  --color-sky-tint: #edf6fc;
+  --color-sky-ink: #246a99;
+  --color-gold: #a2855f;
+  --color-paper: #fafafa;
+  --color-paper-warm: #f7f6f2;
+
+  /* --- Служебный: ошибки. Тёмный тон осеннего акцента — читается на белом (AA) --- */
+  --color-danger: #c1394a;
+
+  /* --- Сезонные схемы (стр. 11–14) --- */
+  --color-spring: #3ad754;
+  --color-spring-strong: #0b4d4d;
+  --color-summer: #ff5b00;
+  --color-summer-strong: #f18300;
+  --color-autumn: #f24559;
+  --color-autumn-strong: #f68e9a;
+  --color-winter: #4582f2;
+  --color-winter-strong: #d6e3fb;
+
+  /* Золото как текст: тёмный тон фирменного золота (контраст 5,5:1) */
+  --color-gold-ink: #7c6440;
+
+  /* --- Типографика (стр. 21–23) --- */
+  --font-display: var(--font-geologica), Verdana, Arial, sans-serif;
+  --font-body: var(--font-geologica), Verdana, Arial, sans-serif;
+  --font-long: var(--font-noto-serif), Georgia, "Times New Roman", serif;
+
+  /* --- Типографическая шкала интерфейса (Geologica) ---
+     Ступени, а не произвольные пиксели: каждый размер отвечает за свою роль.
+     Межстрочный интервал не задаётся — наследуется от контекста. */
+  --text-micro: 11px; /* служебные метки, бейджи, надзаголовки карточек */
+  --text-caption: 12px; /* подписи, вторичные данные */
+  --text-meta: 13px; /* метаданные, кнопки второго плана, подсказки */
+  --text-ui: 14px; /* основной текст интерфейса */
+  --text-body: 15px; /* текст сообщений и постов */
+  --text-lead: 16px; /* имена, акцентные строки */
+  --text-subtitle: 18px; /* подзаголовки карточек, крупные значения */
+  --text-title-sm: 20px; /* заголовки малых блоков */
+  --text-title: 22px; /* заголовки панелей */
+  --text-title-lg: 24px; /* заголовки разделов в карточках */
+  --text-heading: 28px; /* крупные заголовки внутри страниц */
+  --text-display-sm: 40px; /* цифры на экране ведущего */
+  --text-display: 56px; /* код опроса на проекторе */
+
+  /* --- Геометрия: радиусы по иерархии (от чипа до карточки) --- */
+  --radius-chip: 10px; /* пункты меню, мелкие элементы */
+  --radius-field: 14px; /* поля, кнопки-плитки, уведомления */
+  --radius-card: 26px;
+  --radius-soft: 18px;
+  --radius-glass: 18px;
+  --radius-panel: 20px; /* вложенные панели и блоки */
+  --blur-glass: 18px;
+  --ease-brand: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* --- Акцент активной программы ---------------------------------------------
+   inline: утилиты (bg-accent, text-accent-ink, text-on-accent) ссылаются
+   на переменные напрямую и берут цвет сезона у ближайшего [data-season].
+   Без inline Tailwind вычислил бы их один раз на :root — и все программы
+   получили бы акцент по умолчанию. */
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  /* Акцент как текст на светлом фоне: тёмный тон сезона, контраст ≥ 5:1 */
+  --color-accent-ink: var(--accent-ink);
+  /* Текст на сплошной акцентной заливке: белый на светлых акцентах не читается */
+  --color-on-accent: var(--on-accent);
+}
+
+:root {
+  --accent: #54a4db;
+  --accent-strong: #223f9a;
+  --accent-ink: #246a99;
+  --on-accent: #0a1014;
+
+  --line: rgba(34, 63, 154, 0.13);
+  --line-soft: rgba(34, 63, 154, 0.1);
+  --shadow-brand: 0 18px 55px rgba(34, 63, 154, 0.09);
+  --shadow-soft: 0 4px 20px rgba(34, 63, 154, 0.035);
+  --wrap-max: 1180px;
+}
+
+[data-season="spring"] {
+  --accent: #3ad754;
+  --accent-strong: #0b4d4d;
+  --accent-ink: #18712e;
+}
+
+[data-season="summer"] {
+  --accent: #ff5b00;
+  --accent-strong: #f18300;
+  --accent-ink: #b84100;
+}
+
+[data-season="autumn"] {
+  --accent: #f24559;
+  --accent-strong: #f68e9a;
+  --accent-ink: #b02a3c;
+}
+
+[data-season="winter"] {
+  --accent: #4582f2;
+  --accent-strong: #d6e3fb;
+  --accent-ink: #2a5bbd;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 92px;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-paper-warm);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  img,
+  svg {
+    max-width: 100%;
+  }
+
+  ::selection {
+    background: var(--color-navy);
+    color: #fff;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* --- Контейнер --- */
+  .wrap {
+    width: min(var(--wrap-max), calc(100% - 40px));
+    margin-inline: auto;
+  }
+
+  .section {
+    padding: 100px 0;
+  }
+
+  /* --- Надзаголовок (eyebrow): 12px, 600, трекинг .18em, золото (тёмный тон — читается на светлом) --- */
+  .eyebrow {
+    margin: 0 0 14px;
+    color: var(--color-gold-ink);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .eyebrow--light {
+    color: var(--color-sky-light);
+  }
+
+  /* --- Заголовок секции: плотный интерлиньяж, отрицательный трекинг --- */
+  .section-title {
+    max-width: 780px;
+    margin: 0 0 22px;
+    color: var(--color-navy);
+    font-family: var(--font-display);
+    font-size: clamp(34px, 5vw, 64px);
+    font-weight: 600;
+    line-height: 1.02;
+    letter-spacing: -0.05em;
+  }
+
+  .section-title--light {
+    color: #fff;
+  }
+
+  .section-title--tight {
+    margin-bottom: 0;
+  }
+
+  /* --- Вводный абзац: Noto Serif italic, увеличенный интерлиньяж --- */
+  .lead {
+    max-width: 770px;
+    margin: 0;
+    color: #504940;
+    font-family: var(--font-long);
+    font-size: clamp(18px, 2.2vw, 25px);
+    font-style: italic;
+    line-height: 1.55;
+  }
+
+  .lead--light {
+    color: rgba(255, 255, 255, 0.84);
+  }
+
+  /* --- Фирменный mesh-фон: радиальные свечения + техническая сетка ---
+     Линейные цветовые градиенты не используются (руководство, стр. 14):
+     фон строится только на радиальных пятнах и 1px-сетке как на паттерне. */
+  .mesh {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background: var(--color-navy);
+    color: #fff;
+  }
+
+  .mesh::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(circle at 85% 12%, rgba(84, 164, 219, 0.48), transparent 31%),
+      radial-gradient(circle at 8% 82%, rgba(162, 133, 95, 0.33), transparent 28%),
+      linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+    background-size:
+      auto,
+      auto,
+      48px 48px,
+      48px 48px;
+  }
+
+  /* Сезонный вариант: к фирменным свечениям добавляется акцент программы */
+  .mesh--accent::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: radial-gradient(
+      circle at 76% 88%,
+      color-mix(in oklab, var(--accent) 34%, transparent),
+      transparent 33%
+    );
+  }
+
+  /* --- Горный хребет: фирменный графический якорь --- */
+  .mountain-line {
+    position: absolute;
+    right: -4%;
+    bottom: -5px;
+    width: 72%;
+    height: 250px;
+    opacity: 0.18;
+    pointer-events: none;
+  }
+
+  /* --- Стекло: карточки на фирменном фоне --- */
+  .glass {
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: var(--radius-glass);
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(8px);
+  }
+
+  /* --- Карточка --- */
+  .card {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-card);
+    background: #fff;
+    box-shadow: var(--shadow-brand);
+    transition: transform 0.25s var(--ease-brand);
+  }
+
+  .card--hover:hover {
+    transform: translateY(-5px);
+  }
+
+  /* --- Пилюля-тег --- */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    padding: 6px 11px;
+    border-radius: 99px;
+    background: var(--color-sky-tint);
+    color: var(--color-sky-ink);
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  /* --- Длинные тексты: методички и аналитика (Noto Serif) --- */
+  .prose-brand {
+    font-family: var(--font-long);
+    font-size: 17px;
+    line-height: 1.7;
+    color: #504940;
+  }
+
+  .prose-brand strong {
+    color: var(--color-ink);
+  }
+
+  /* --- Полупрозрачный крупный номер карточки --- */
+  .card-num {
+    color: rgba(34, 63, 154, 0.18);
+    font-size: 36px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+
+  /* --- Содержимое постов и комментариев канала --- */
+  .rich {
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--color-ink-soft);
+    overflow-wrap: anywhere;
+  }
+
+  .rich > * + * {
+    margin-top: 12px;
+  }
+
+  .rich p {
+    margin: 0;
+  }
+
+  .rich strong {
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  .rich h3 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--color-navy);
+  }
+
+  .rich ul,
+  .rich ol {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding-left: 22px;
+  }
+
+  .rich li::marker {
+    color: var(--color-sky);
+  }
+
+  .rich blockquote {
+    margin: 0;
+    padding: 14px 18px;
+    border-left: 3px solid var(--accent);
+    border-radius: 0 14px 14px 0;
+    background: color-mix(in oklab, var(--accent) 7%, white);
+    font-family: var(--font-long);
+    font-style: italic;
+    color: #504940;
+  }
+
+  .rich a {
+    color: var(--color-navy);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .rich code {
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--color-sky-tint);
+    font-size: 0.92em;
+  }
+
+  .rich img {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    max-height: 520px;
+    object-fit: contain;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+  }
+
+  .rich hr {
+    border: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .rich .mention {
+    padding: 1px 7px;
+    border-radius: 99px;
+    background: var(--color-sky-tint);
+    color: var(--color-sky-ink);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .rich--compact {
+    font-size: 14px;
+  }
+
+  /* --- Редактор постов --- */
+  .editor .ProseMirror {
+    min-height: 104px;
+    padding: 4px 2px;
+    outline: none;
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--color-ink);
+  }
+
+  .editor .ProseMirror p.is-editor-empty:first-child::before {
+    float: left;
+    height: 0;
+    color: #9a938a;
+    content: attr(data-placeholder);
+    pointer-events: none;
+  }
+
+  .editor .ProseMirror img {
+    max-height: 360px;
+    margin-top: 10px;
+    border-radius: 14px;
+  }
+
+  .editor--compact .ProseMirror {
+    min-height: 64px;
+  }
+
+  /* --- Панель инструментов редактора --- */
+  .tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0 9px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--color-ink-soft);
+    font: 600 13px var(--font-body);
+    cursor: pointer;
+    transition:
+      background 0.18s var(--ease-brand),
+      color 0.18s var(--ease-brand);
+  }
+
+  .tool:hover {
+    background: var(--color-sky-tint);
+    color: var(--color-navy);
+  }
+
+  .tool[data-active="true"] {
+    background: var(--color-navy);
+    color: #fff;
+  }
+}
+
+@media (max-width: 680px) {
+  .wrap {
+    width: min(100% - 28px, var(--wrap-max));
+  }
+
+  .section {
+    padding: 72px 0;
+  }
+
+  .mountain-line {
+    width: 100%;
+  }
+}

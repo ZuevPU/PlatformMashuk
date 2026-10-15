@@ -1,0 +1,3 @@
+# Cron на сервере (crontab deploy/cron.txt). Вызов через bash: exec-бит в git не хранится.
+30 3 * * * bash /opt/mashuk/deploy/backup.sh >> /var/log/mashuk-backup.log 2>&1
+*/5 * * * * bash /opt/mashuk/deploy/autoupdate.sh >> /var/log/mashuk-autoupdate.log 2>&1

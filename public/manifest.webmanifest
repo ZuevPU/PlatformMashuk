@@ -1,0 +1,15 @@
+{
+  "name": "Центр знаний «Машук»",
+  "short_name": "Машук",
+  "description": "Экосистема сопровождения слушателей программ Центра знаний «Машук».",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#223F9A",
+  "theme_color": "#223F9A",
+  "lang": "ru",
+  "icons": [
+    { "src": "/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/brand/logo/logo_compact_color.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

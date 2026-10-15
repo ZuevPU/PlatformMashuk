@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /cabinet
+Disallow: /join
+Disallow: /poll
+Disallow: /programs/*/hub
+Disallow: /programs/*/enter
+
+Sitemap: https://109.71.247.90.sslip.io/sitemap.xml

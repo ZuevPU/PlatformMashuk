@@ -1,0 +1,70 @@
+name: Build & publish images
+
+# Собирает образы приложения и инструментов и публикует их в ghcr.io.
+# Сервер обновляется сам (deploy/autoupdate.sh по cron): тянет :latest
+# и перезапускается. Входящий SSH из CI не требуется — меньше точек отказа.
+#
+# Пакеты ghcr.io должны быть публичными, чтобы сервер тянул образ без токена.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-publish
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Имя образа в реестре (нижний регистр)
+        id: meta
+        run: |
+          OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          echo "image=${REGISTRY}/${OWNER}/platformmashuk" >> "$GITHUB_OUTPUT"
+          echo "tools=${REGISTRY}/${OWNER}/platformmashuk-tools" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Образ приложения
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_SENTRY_DSN=https://4034160f86a84c0db5f235ad2a74343b@errors.109.71.247.90.sslip.io/1
+          tags: |
+            ${{ steps.meta.outputs.image }}:latest
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Образ инструментов (миграции/сидинг)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.tools
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.tools }}:latest
+            ${{ steps.meta.outputs.tools }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

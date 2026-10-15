@@ -1,0 +1,52 @@
+# GlitchTip — self-hosted трекер ошибок (Sentry-совместимый).
+#
+# Запускается ОТДЕЛЬНО от основного стека, но использует его сеть и базу:
+#   1) docker compose up -d          (в каталоге platform/)
+#   2) docker compose -f deploy/glitchtip/docker-compose.yml up -d
+#
+# Требуется один раз в основном PostgreSQL: база glitchtip создаётся
+# скриптом deploy/postgres/init/01-glitchtip.sql при первой инициализации.
+# Если база уже была создана раньше, создайте её вручную:
+#   docker compose exec db createdb -U $POSTGRES_USER glitchtip
+#
+# Чтобы Caddy отдавал трекер по HTTPS, раскомментируйте блок {$ERRORS_DOMAIN}
+# в deploy/Caddyfile и задайте ERRORS_DOMAIN в .env.
+#
+# Приём ошибок включается в приложении после подключения Sentry SDK
+# и SENTRY_DSN (см. ДЕПЛОЙ.md).
+
+name: mashuk-glitchtip
+
+services:
+  glitchtip:
+    image: glitchtip/glitchtip:6
+    restart: unless-stopped
+    environment:
+      # Общий PostgreSQL основного стека (сеть mashuk_default)
+      DATABASE_URL: postgres://${POSTGRES_USER:-mashuk}:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD}@db:5432/glitchtip
+      # Valkey отключён ради экономии памяти: очередь и кэш идут через PostgreSQL
+      VALKEY_URL: ""
+      GLITCHTIP_ENABLE_LOGS: "False"
+      GLITCHTIP_ENABLE_UPTIME: "False"
+      SERVER_ROLE: all_in_one
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?задайте GLITCHTIP_SECRET_KEY в .env}
+      EMAIL_URL: consolemail://
+      GLITCHTIP_DOMAIN: https://${ERRORS_DOMAIN:?задайте ERRORS_DOMAIN в .env}
+      CSRF_TRUSTED_ORIGINS: https://${ERRORS_DOMAIN}
+      ALLOWED_HOSTS: "*"
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@${DOMAIN}}
+      ENABLE_USER_REGISTRATION: "True"
+    volumes:
+      - glitchtip_uploads:/code/uploads
+    mem_limit: 768m
+    networks:
+      - default
+
+networks:
+  # Сеть основного стека: имя проекта mashuk + _default
+  default:
+    external: true
+    name: mashuk_default
+
+volumes:
+  glitchtip_uploads:

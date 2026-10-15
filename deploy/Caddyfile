@@ -1,0 +1,47 @@
+# Caddy: TLS автоматически (Let's Encrypt), проксирование приложения и Grafana.
+#
+# Домен и почта для ACME берутся из переменных окружения DOMAIN и ACME_EMAIL
+# (заданы сервису caddy в docker-compose.yml).
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Grafana доступна по адресу https://{$DOMAIN}/grafana/
+	handle /grafana/* {
+		reverse_proxy grafana:3000
+	}
+
+	# Приложение (включая Server-Sent Events — поток живых событий)
+	handle {
+		reverse_proxy app:4321 {
+			# Немедленная отдача чанков: без этого SSE буферизуется
+			flush_interval -1
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
+
+# --- GlitchTip (трекер ошибок) ----------------------------------------------
+# Отдаётся на отдельном домене (ERRORS_DOMAIN, например errors.example.ru),
+# который задаётся в .env. Сервис glitchtip поднимается из
+# deploy/glitchtip/docker-compose.yml в той же сети.
+{$ERRORS_DOMAIN} {
+	reverse_proxy glitchtip:8000
+}

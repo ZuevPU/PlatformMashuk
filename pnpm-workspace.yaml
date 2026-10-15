@@ -1,0 +1,5 @@
+# Разрешение запускать build-скрипты сторонних пакетов (pnpm 11+).
+# esbuild (через tsx/drizzle-kit) требует установки нативного бинарника.
+# Без этой записи pnpm 11+ падает с ERR_PNPM_IGNORED_BUILDS (strictDepBuilds=true).
+allowBuilds:
+  esbuild: true
