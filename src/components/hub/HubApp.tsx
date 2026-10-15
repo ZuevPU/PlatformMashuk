@@ -447,7 +447,7 @@ export function HubApp({
         </div>
 
         <div className="mt-5 lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
-          <aside className="hidden gap-4 border-r border-[var(--line)] bg-white px-4 py-5 md:px-8 lg:sticky lg:top-14 lg:flex lg:h-[calc(100vh-3.5rem)] lg:flex-col lg:justify-center lg:overflow-y-auto lg:px-5 lg:py-6">
+          <aside className="hidden gap-4 border-r border-[var(--line)] bg-white px-4 py-5 md:px-8 lg:sticky lg:top-14 lg:flex lg:h-[calc(100vh-3.5rem)] lg:flex-col lg:overflow-y-auto lg:px-5 lg:py-6">
             <nav
               ref={navRef}
               className="flex flex-col gap-1"
